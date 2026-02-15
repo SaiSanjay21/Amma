@@ -26,6 +26,8 @@ let settings = {
     snoozeDuration: 5,
     notifications: true,
     speakReminders: true,
+    notifications: true,
+    speakReminders: true,
     aiServerUrl: '',
 };
 let currentAlarmReminder = null;
@@ -81,6 +83,7 @@ async function init() {
         settings.alarmSound = await getSetting('alarmSound', 'gentle');
         settings.volume = await getSetting('volume', 0.7);
         settings.snoozeDuration = await getSetting('snoozeDuration', 5);
+        settings.notifications = await getSetting('notifications', true);
         settings.notifications = await getSetting('notifications', true);
         settings.speakReminders = await getSetting('speakReminders', true);
         settings.aiServerUrl = await getSetting('aiServerUrl', '');
@@ -1527,9 +1530,76 @@ async function askAI(question) {
             }
         }
 
-        // Step 2: Generate Response
-        console.log('Generating response for:', question);
-        const genRes = await LlmPlugin.generate({ prompt: question });
+        // Step 2: Retrieve Relevant Context (True RAG)
+        // We only fetch data that matches keywords in the question to keep context tiny.
+        console.log('Retrieving relevant context...');
+        const allReminders = await getAllItems('reminders');
+        const allNotes = await getAllItems('notes');
+
+        // simple keyword extraction (remove common stop words)
+        const stopWords = new Set(['the', 'is', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'what', 'where', 'when', 'who', 'how', 'tell', 'me', 'about', 'question', 'ask', 'ai', 'amma']);
+        const keywords = question.toLowerCase()
+            .replace(/[^\w\s]/g, '') // remove punctuation
+            .split(/\s+/)
+            .filter(w => w.length > 2 && !stopWords.has(w));
+
+        console.log('Query Keywords:', keywords);
+
+        // Helper to score relevance
+        const scoreItem = (text) => {
+            if (!text) return 0;
+            const lower = text.toLowerCase();
+            let score = 0;
+            keywords.forEach(k => {
+                if (lower.includes(k)) score += 1;
+            });
+            return score;
+        };
+
+        // Filter Reminders (Active + Relevant)
+        const relevantReminders = allReminders
+            .filter(r => !r.completed) // Always include active reminders? No, only relevant ones unless user asks "what are my reminders"
+            .map(r => ({ ...r, score: scoreItem(r.title + ' ' + r.message) }))
+            .filter(r => r.score > 0 || question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 5); // Max 5 relevant reminders
+
+        // Filter Notes (Relevant Only)
+        const relevantNotes = allNotes
+            .map(n => ({ ...n, score: scoreItem(n.title + ' ' + n.content) }))
+            .filter(n => n.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3); // Max 3 relevant notes
+
+        // Construct Miniature Context
+        let contextString = "Context Data:\n";
+
+        if (relevantReminders.length > 0) {
+            contextString += "Relevant Reminders:\n" + relevantReminders.map(r =>
+                `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`
+            ).join("\n") + "\n";
+        } else if (allReminders.filter(r => !r.completed).length > 0 && (question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))) {
+            // Fallback: If asking about reminders but no keywords matched specific ones, show upcoming
+            const upcoming = allReminders.filter(r => !r.completed).slice(0, 5);
+            contextString += "Upcoming Reminders:\n" + upcoming.map(r => `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`).join("\n") + "\n";
+        } else {
+            contextString += "(No relevant reminders found)\n";
+        }
+
+        if (relevantNotes.length > 0) {
+            contextString += "\nRelevant Notes:\n" + relevantNotes.map(n =>
+                `- Title: ${n.title}\n  Content: ${n.content}`
+            ).join("\n") + "\n";
+        } else {
+            contextString += "(No relevant notes found matching keywords)\n";
+        }
+
+        // Final Prompt: Tight and Focused
+        const fullPrompt = `You are Amma, a helpful assistant. Use the Context below to answer the User.\n${contextString}\nUser: ${question}\nAmma:`;
+
+        // Step 3: Generate Response
+        console.log('Generating response for:', fullPrompt);
+        const genRes = await LlmPlugin.generate({ prompt: fullPrompt });
         const answer = genRes.response;
 
         if (answer) {
@@ -1544,6 +1614,8 @@ async function askAI(question) {
                 stopSpeaking();
                 speak(answer, settings.voice, settings.rate);
             });
+            // (No background consolidation, just pure RAG)
+
         } else {
             throw new Error('Empty response from AI');
         }
