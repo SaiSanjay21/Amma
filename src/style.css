@@ -1621,3 +1621,299 @@ body {
     padding-bottom: var(--space-sm);
   }
 }
+
+/* ==========================================
+   PWA Install Banner
+   ========================================== */
+#pwa-install-banner {
+  position: fixed;
+  bottom: -100px;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: var(--space-sm) var(--space-md);
+  padding-bottom: calc(var(--space-sm) + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--card-border);
+  backdrop-filter: blur(20px);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(0);
+}
+
+#pwa-install-banner.visible {
+  transform: translateY(-100px);
+  bottom: 0;
+  transform: translateY(0);
+}
+
+.pwa-install-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.pwa-install-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.pwa-install-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pwa-install-text strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.pwa-install-text span {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+#pwa-install-btn {
+  padding: 8px 18px;
+  font-size: 0.8rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+#pwa-install-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   Mobile Safe Areas (notch / gesture bar)
+   ========================================== */
+@supports (padding: env(safe-area-inset-top)) {
+  .top-bar {
+    padding-top: calc(var(--space-sm) + env(safe-area-inset-top, 0px));
+  }
+
+  .sidebar {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .views-container {
+    padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ==========================================
+   Standalone PWA Mode (installed on device)
+   ========================================== */
+@media (display-mode: standalone) {
+
+  /* Adjust for no browser chrome */
+  .top-bar {
+    padding-top: calc(var(--space-md) + env(safe-area-inset-top, 20px));
+  }
+
+  /* Hide install-related UI when already installed */
+  #pwa-install-banner {
+    display: none !important;
+  }
+
+  /* Smooth touch scrolling everywhere */
+  .views-container,
+  .sidebar,
+  .modal-body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text selection during swipes (feels more native) */
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Allow text selection only in inputs and textareas */
+  input,
+  textarea,
+  [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+/* ==========================================
+   Touch-Friendly Enhancements
+   ========================================== */
+@media (pointer: coarse) {
+
+  /* Larger touch targets */
+  .btn,
+  .btn-icon,
+  .nav-item {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .filter-btn {
+    padding: 8px 18px;
+    font-size: 0.85rem;
+  }
+
+  /* Disable hover effects on touch — use active instead */
+  .reminder-card:hover {
+    transform: none;
+  }
+
+  .reminder-card:active {
+    transform: scale(0.98);
+    background: var(--card-hover);
+  }
+
+  .note-card:active {
+    transform: scale(0.97);
+  }
+
+  /* Thumb-friendly bottom spacing */
+  .views-container {
+    padding-bottom: calc(var(--space-xl) * 2);
+  }
+}
+
+/* ==========================================
+   AI Assistant Overlay
+   ========================================== */
+.ai-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.ai-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ai-card {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(139, 92, 246, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 80vh;
+}
+
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: var(--space-sm);
+}
+
+.ai-icon {
+  font-size: 1.5rem;
+}
+
+.ai-header h3 {
+  flex: 1;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.ai-question {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  border-left: 3px solid var(--primary-color);
+  padding-left: var(--space-sm);
+}
+
+.ai-answer {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1.6;
+  overflow-y: auto;
+  min-height: 100px;
+  max-height: 300px;
+  white-space: pre-wrap;
+}
+
+/* Loading Animation */
+.ai-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100px;
+}
+
+.ai-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--primary-color);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.ai-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.ai-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1);
+  }
+}
+
+.ai-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.ai-actions button {
+  flex: 1;
+}

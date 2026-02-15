@@ -165,8 +165,52 @@ export function stopAlarmSound() {
 
 /**
  * Text-to-Speech Engine
+ * Uses native Android TTS in Capacitor, falls back to Web Speech API in browsers
  */
-export function speak(text, voiceName = null, rate = 1) {
+
+let nativeTtsPlugin = null;
+let nativeTtsReady = false;
+
+// Initialize native TTS if running in Capacitor
+async function initNativeTts() {
+    if (nativeTtsReady) return true;
+    try {
+        if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+            const module = await import('@capacitor-community/text-to-speech');
+            nativeTtsPlugin = module.TextToSpeech;
+            nativeTtsReady = true;
+            console.log('📢 Native TTS ready');
+            return true;
+        }
+    } catch (err) {
+        console.warn('Native TTS not available:', err);
+    }
+    return false;
+}
+
+export async function speak(text, voiceName = null, rate = 1) {
+    if (!text) return;
+
+    // Try native TTS first (Android)
+    try {
+        await initNativeTts();
+        if (nativeTtsReady && nativeTtsPlugin) {
+            await nativeTtsPlugin.speak({
+                text: text,
+                lang: 'en-US',
+                rate: rate,
+                pitch: 1.0,
+                volume: 1.0,
+                category: 'ambient',
+            });
+            console.log('📢 Native TTS spoke:', text.substring(0, 50));
+            return;
+        }
+    } catch (err) {
+        console.warn('Native TTS speak failed:', err);
+    }
+
+    // Fallback to Web Speech API (browser)
     return new Promise((resolve) => {
         if (!('speechSynthesis' in window)) {
             console.warn('Text-to-speech not supported');
@@ -199,10 +243,48 @@ export function speak(text, voiceName = null, rate = 1) {
 }
 
 /**
+ * Stop any ongoing speech
+ */
+export async function stopSpeaking() {
+    try {
+        if (nativeTtsReady && nativeTtsPlugin) {
+            await nativeTtsPlugin.stop();
+            return;
+        }
+    } catch (e) { /* ignore */ }
+
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
+}
+
+/**
  * Get available voices
  */
-export function getVoices() {
+export async function getVoices() {
+    // Try native voices first
+    try {
+        await initNativeTts();
+        if (nativeTtsReady && nativeTtsPlugin) {
+            const result = await nativeTtsPlugin.getSupportedVoices();
+            if (result && result.voices && result.voices.length > 0) {
+                console.log(`📢 Found ${result.voices.length} native voices`);
+                return result.voices.map(v => ({
+                    name: v.name || v.voiceURI || 'Default',
+                    lang: v.lang || 'en-US',
+                }));
+            }
+        }
+    } catch (err) {
+        console.warn('Native voices not available:', err);
+    }
+
+    // Fallback to Web Speech API voices
     return new Promise((resolve) => {
+        if (!('speechSynthesis' in window)) {
+            resolve([]);
+            return;
+        }
         let voices = window.speechSynthesis.getVoices();
         if (voices.length > 0) {
             resolve(voices);

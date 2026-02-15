@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6C5CE7"/>
+      <stop offset="100%" style="stop-color:#a855f7"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bg)"/>
+  <!-- Bell -->
+  <g transform="translate(96,90)" filter="url(#glow)">
+    <path d="M0-40 C-22-40-30-20-30 0 C-30 15-32 25-40 32 L40 32 C32 25 30 15 30 0 C30-20 22-40 0-40Z" fill="white" opacity="0.95"/>
+    <circle cx="0" cy="-44" r="6" fill="white"/>
+    <path d="M-12 36 Q0 48 12 36" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <!-- AI waves -->
+  <g transform="translate(96,100)" opacity="0.6">
+    <path d="M-50 20 Q-35 10-20 20 Q-5 30 10 20 Q25 10 40 20" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-45 30 Q-30 22-15 30 Q0 38 15 30 Q30 22 45 30" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  </g>
+</svg>

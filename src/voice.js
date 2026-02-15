@@ -2,19 +2,73 @@
  * RemindMe AI — Voice Command Engine
  * Handles speech recognition and natural language parsing
  * with advanced date/time extraction for smart scheduling
+ *
+ * Supports TWO modes:
+ *   1. Native Android (Capacitor) — uses Android's Google Speech UI popup
+ *   2. Web Browser — uses Web Speech API via Chrome (requires HTTPS)
  */
 
 let recognition = null;
 let isListening = false;
+let useNativeRecognition = false;
+let nativeSpeechPlugin = null;
 
 /**
- * Initialize Speech Recognition
+ * Detect if we're running inside a Capacitor native app
  */
-export function initVoiceRecognition() {
+function isCapacitorNative() {
+    try {
+        return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Initialize Speech Recognition — auto-detects native vs browser
+ */
+export async function initVoiceRecognition() {
+    // --- Native Android (Capacitor) ---
+    if (isCapacitorNative()) {
+        console.log('📱 Detected Capacitor native platform');
+        try {
+            const module = await import('@capacitor-community/speech-recognition');
+            nativeSpeechPlugin = module.SpeechRecognition;
+            console.log('📱 Speech plugin loaded:', !!nativeSpeechPlugin);
+
+            // Request permissions
+            try {
+                const permResult = await nativeSpeechPlugin.requestPermissions();
+                console.log('🎤 Permission result:', JSON.stringify(permResult));
+            } catch (permErr) {
+                console.warn('Permission request failed (may already be granted):', permErr);
+            }
+
+            // Check availability
+            try {
+                const available = await nativeSpeechPlugin.available();
+                console.log('🔍 Speech available:', JSON.stringify(available));
+                if (available.available) {
+                    useNativeRecognition = true;
+                    console.log('✅ Native Android speech recognition READY');
+                    return true;
+                }
+            } catch (availErr) {
+                // Some versions may not have .available() — still try to use it
+                console.warn('Availability check failed, will try anyway:', availErr);
+                useNativeRecognition = true;
+                return true;
+            }
+        } catch (err) {
+            console.error('❌ Native speech plugin failed to load:', err);
+        }
+    }
+
+    // --- Web Browser fallback ---
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        console.warn('Speech Recognition not supported in this browser');
+        console.warn('❌ No speech recognition available');
         return null;
     }
 
@@ -24,24 +78,83 @@ export function initVoiceRecognition() {
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 1;
 
+    console.log('🌐 Using Web Speech API');
     return recognition;
 }
 
 /**
  * Start listening for voice commands
  */
-export function startListening(onResult, onInterim, onEnd, onError) {
-    if (!recognition) {
-        const rec = initVoiceRecognition();
-        if (!rec) {
-            onError?.('Speech recognition not supported in this browser');
-            return;
-        }
-    }
-
+export async function startListening(onResult, onInterim, onEnd, onError) {
     if (isListening) {
         stopListening();
         return;
+    }
+
+    // --- Native Android path ---
+    if (useNativeRecognition && nativeSpeechPlugin) {
+        isListening = true;
+
+        try {
+            // Use popup: true for maximum compatibility
+            // This launches Android's built-in Google Speech dialog
+            const result = await nativeSpeechPlugin.start({
+                language: 'en-US',
+                maxResults: 1,
+                prompt: 'Say a reminder or note...',
+                partialResults: false,
+                popup: true,  // Shows Google's familiar speech UI
+            });
+
+            isListening = false;
+            console.log('🎤 Speech result:', JSON.stringify(result));
+
+            // Process the result
+            if (result && result.matches && result.matches.length > 0) {
+                const transcript = result.matches[0];
+                onResult?.(transcript);
+            } else {
+                onError?.('No speech detected. Please try again.');
+            }
+
+            onEnd?.();
+        } catch (err) {
+            isListening = false;
+            console.error('Native speech error:', err);
+
+            // If popup mode fails, try without popup
+            try {
+                console.log('Retrying without popup...');
+                const result = await nativeSpeechPlugin.start({
+                    language: 'en-US',
+                    maxResults: 1,
+                    partialResults: false,
+                    popup: false,
+                });
+
+                if (result && result.matches && result.matches.length > 0) {
+                    onResult?.(result.matches[0]);
+                } else {
+                    onError?.('No speech detected. Please try again.');
+                }
+                onEnd?.();
+            } catch (retryErr) {
+                console.error('Speech retry also failed:', retryErr);
+                onError?.('Voice recognition failed. Please check that Google app is installed and microphone permission is granted.');
+                onEnd?.();
+            }
+        }
+
+        return;
+    }
+
+    // --- Web browser path ---
+    if (!recognition) {
+        const rec = await initVoiceRecognition();
+        if (!rec) {
+            onError?.('Speech recognition not supported. Use Chrome or install the Android app.');
+            return;
+        }
     }
 
     isListening = true;
@@ -89,7 +202,15 @@ export function startListening(onResult, onInterim, onEnd, onError) {
 /**
  * Stop listening
  */
-export function stopListening() {
+export async function stopListening() {
+    if (useNativeRecognition && nativeSpeechPlugin) {
+        try {
+            await nativeSpeechPlugin.stop();
+        } catch (e) { /* ignore */ }
+        isListening = false;
+        return;
+    }
+
     if (recognition && isListening) {
         recognition.stop();
         isListening = false;
@@ -508,13 +629,29 @@ export function parseVoiceCommand(transcript) {
 
     // ---- Step 9: Clean up title ----
     taskText = taskText
-        .replace(/\b(at|by|around|for|on|in|the|every|each|to|and|then|also|please|can you|morning|afternoon|evening|night|this|next|due|before|until)\b/gi, ' ')
+        .replace(/\b(at|by|around|for|on|in|the|every|each|to|and|then|also|please|can you|morning|afternoon|evening|night|this|next|due|before|until|set|remind|me|reminder|alarm|timer|remember|don't|forget|wake|up|alert|notify|an?|about|that)\b/gi, ' ')
+        .replace(/\d{1,2}:\d{2}/g, '')          // remove leftover time digits like "5:05"
+        .replace(/\d{1,2}\s*(am|pm)/gi, '')     // remove leftover "5 am"
         .replace(/\s+/g, ' ')
         .trim();
 
     // Capitalize first letter
     if (taskText) {
         result.title = taskText.charAt(0).toUpperCase() + taskText.slice(1);
+    }
+
+    // ---- Step 10: Generate default title if empty ----
+    if (!result.title && result.isReminder) {
+        // Build a contextual title from the time/date
+        if (result.time) {
+            const [h, m] = result.time.split(':').map(Number);
+            const period = h >= 12 ? 'PM' : 'AM';
+            const displayHour = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+            const displayMin = m > 0 ? `:${m.toString().padStart(2, '0')}` : '';
+            result.title = `Reminder at ${displayHour}${displayMin} ${period}`;
+        } else {
+            result.title = 'Reminder';
+        }
     }
 
     return result;

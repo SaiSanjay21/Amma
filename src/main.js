@@ -5,9 +5,12 @@
 
 import './style.css';
 import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData } from './db.js';
-import { playAlarmSound, stopAlarmSound, speak, getVoices, playNotificationSound } from './audio.js';
+import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNotificationSound } from './audio.js';
 import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
+import { registerPlugin } from '@capacitor/core';
+
+const LlmPlugin = registerPlugin('LlmPlugin');
 
 // ==========================================
 // App State
@@ -23,6 +26,7 @@ let settings = {
     snoozeDuration: 5,
     notifications: true,
     speakReminders: true,
+    aiServerUrl: '',
 };
 let currentAlarmReminder = null;
 
@@ -79,6 +83,7 @@ async function init() {
         settings.snoozeDuration = await getSetting('snoozeDuration', 5);
         settings.notifications = await getSetting('notifications', true);
         settings.speakReminders = await getSetting('speakReminders', true);
+        settings.aiServerUrl = await getSetting('aiServerUrl', '');
 
         // Show onboarding if no name set
         if (!userName) {
@@ -107,9 +112,112 @@ async function init() {
             Notification.requestPermission();
         }
 
+        // Register Service Worker for PWA / offline support
+        registerServiceWorker();
+
+        // Handle PWA install prompt
+        initPWAInstall();
+
         console.log('🚀 RemindMe AI initialized');
     } catch (error) {
         console.error('Init error:', error);
+    }
+}
+
+// ==========================================
+// PWA — Service Worker Registration
+// ==========================================
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+                console.log('📱 Service Worker registered:', registration.scope);
+
+                // Check for updates
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'activated') {
+                            showToast('App updated! Refresh for the latest version.', 'info');
+                        }
+                    });
+                });
+            })
+            .catch((err) => {
+                console.warn('SW registration failed:', err);
+            });
+    }
+}
+
+let deferredInstallPrompt = null;
+
+function initPWAInstall() {
+    // Capture the beforeinstallprompt event
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+
+        // Show a custom install banner (only on mobile)
+        if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+            showInstallBanner();
+        }
+    });
+
+    // Track successful installation
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        hideInstallBanner();
+        showToast('RemindMe AI installed! 🎉', 'success');
+    });
+}
+
+function showInstallBanner() {
+    // Don't show if already dismissed
+    if (localStorage.getItem('pwa-install-dismissed')) return;
+
+    let banner = document.getElementById('pwa-install-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'pwa-install-banner';
+        banner.innerHTML = `
+            <div class="pwa-install-content">
+                <img src="/icon-192.svg" alt="RemindMe AI" class="pwa-install-icon" />
+                <div class="pwa-install-text">
+                    <strong>Install RemindMe AI</strong>
+                    <span>Add to your home screen for the best experience</span>
+                </div>
+                <button id="pwa-install-btn" class="btn btn-primary btn-sm">Install</button>
+                <button id="pwa-install-close" class="btn-icon" title="Dismiss">✕</button>
+            </div>
+        `;
+        document.body.appendChild(banner);
+
+        document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                const result = await deferredInstallPrompt.userChoice;
+                if (result.outcome === 'accepted') {
+                    showToast('Installing RemindMe AI...', 'success');
+                }
+                deferredInstallPrompt = null;
+            }
+            hideInstallBanner();
+        });
+
+        document.getElementById('pwa-install-close').addEventListener('click', () => {
+            hideInstallBanner();
+            localStorage.setItem('pwa-install-dismissed', '1');
+        });
+    }
+
+    setTimeout(() => banner.classList.add('visible'), 2000);
+}
+
+function hideInstallBanner() {
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) {
+        banner.classList.remove('visible');
+        setTimeout(() => banner.remove(), 400);
     }
 }
 
@@ -223,16 +331,19 @@ function initVoice() {
     const voiceTranscript = document.getElementById('voice-transcript');
     const voiceStatus = document.getElementById('voice-status');
 
-    // Check if speech recognition is supported
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        voiceStatus.classList.add('error');
-        voiceStatus.querySelector('span').textContent = 'Voice Not Supported';
-        voiceBtn.title = 'Speech recognition requires Chrome or Edge browser';
-        return;
-    }
-
-    initVoiceRecognition();
+    // Initialize speech recognition (native Android or Web Speech API)
+    initVoiceRecognition().then((result) => {
+        if (!result) {
+            voiceStatus.classList.add('error');
+            voiceStatus.querySelector('span').textContent = 'Voice Not Supported';
+            voiceBtn.title = 'Speech recognition not available on this device';
+            console.warn('No speech recognition available');
+        } else {
+            console.log('✅ Speech recognition ready');
+        }
+    }).catch((err) => {
+        console.warn('Speech recognition init error:', err);
+    });
 
     voiceBtn.addEventListener('click', () => {
         voiceBtn.classList.add('active');
@@ -253,13 +364,14 @@ function initVoice() {
                 // Parse the command
                 const parsed = parseVoiceCommand(transcript);
 
-                if (parsed.isReminder && parsed.title) {
+                if (parsed.isReminder) {
                     // ---- Case 1 & 2: Contains date/time → Create a reminder ----
-                    const message = parsed.message || generateReminderMessage(parsed.title);
+                    const title = parsed.title || 'Reminder';
+                    const message = parsed.message || generateReminderMessage(title);
 
                     const reminder = {
                         id: `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        title: parsed.title,
+                        title: title,
                         message: message,
                         date: parsed.date,
                         time: parsed.time,
@@ -278,7 +390,7 @@ function initVoice() {
                     if (parsed.hasDateTime && !isExplicitReminderKeyword(transcript)) {
                         const note = {
                             id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                            title: parsed.title || 'Voice Note',
+                            title: title,
                             content: transcript,
                             color: 'default',
                             hasReminder: true,
@@ -299,29 +411,41 @@ function initVoice() {
                     const timeStr = formatTimeDisplay(parsed.time);
                     const dateStr = formatDateDisplay(parsed.date);
                     const recStr = parsed.recurrence !== 'none' ? `, ${parsed.recurrence}` : '';
-                    const confirmMsg = `Got it, ${userName}! I'll remind you about ${parsed.title} on ${dateStr} at ${timeStr}${recStr}.`;
+                    const confirmMsg = `Got it, ${userName}! I'll remind you about ${title} on ${dateStr} at ${timeStr}${recStr}.`;
                     speak(confirmMsg, settings.voice, settings.rate);
 
                     showToast(`Reminder set for ${dateStr} at ${timeStr} 🎤`, 'success');
                 } else {
-                    // ---- Case 3: No date/time detected → Save as a plain note ----
-                    const note = {
-                        id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        title: parsed.title || 'Voice Note',
-                        content: transcript,
-                        color: 'default',
-                        hasReminder: false,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                    };
+                    // ---- Case 3: Check for AI Question ----
+                    const lowerTranscript = transcript.toLowerCase();
+                    const isQuestion = /^(ask|question|what|who|when|where|why|how|explain|tell me|can you)/i.test(lowerTranscript);
 
-                    await addItem('notes', note);
-                    await renderNotes();
-                    switchView('notes');
+                    if (isQuestion && settings.aiServerUrl) {
+                        // It's likely a question for the AI
+                        let query = transcript;
+                        // Remove "Ask AI" prefix if present
+                        query = query.replace(/^(ask ai|ask assistant|question)\s+/i, '');
+                        askAI(query);
+                    } else {
+                        // ---- Case 4: Save as a plain note ----
+                        const note = {
+                            id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                            title: parsed.title || 'Voice Note',
+                            content: transcript,
+                            color: 'default',
+                            hasReminder: false,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                        };
 
-                    playNotificationSound();
-                    speak(`I saved that as a note for you, ${userName}.`, settings.voice, settings.rate);
-                    showToast('Saved as a voice note! 📝', 'info');
+                        await addItem('notes', note);
+                        await renderNotes();
+                        switchView('notes');
+
+                        playNotificationSound();
+                        speak(`I saved that as a note for you, ${userName}.`, settings.voice, settings.rate);
+                        showToast('Saved as a voice note! 📝', 'info');
+                    }
                 }
             },
             // onInterim
@@ -386,7 +510,24 @@ function isExplicitReminderKeyword(transcript) {
 function handleAlarm(reminder) {
     currentAlarmReminder = reminder;
 
-    // Play alarm sound
+    // Build the spoken message based on the reminder content
+    const reminderTitle = reminder.title || '';
+    const reminderMessage = reminder.message || '';
+
+    // Determine what to say
+    let spokenText = '';
+    if (reminderMessage && reminderMessage !== `It's time for: ${reminderTitle}`) {
+        // User provided a custom message — read it out
+        spokenText = `Hey ${userName}! ${reminderMessage}`;
+    } else if (reminderTitle && reminderTitle !== 'Reminder' && !reminderTitle.startsWith('Reminder at ')) {
+        // Has a meaningful title like "Doctor appointment"
+        spokenText = `Hey ${userName}, it's time for ${reminderTitle.toLowerCase()}.`;
+    } else {
+        // Generic reminder with no specific title
+        spokenText = `Hey ${userName}, you have a reminder right now.`;
+    }
+
+    // Play a short alarm chime first
     playAlarmSound(settings.alarmSound, settings.volume);
 
     // Show alarm overlay
@@ -394,22 +535,27 @@ function handleAlarm(reminder) {
     const title = document.getElementById('alarm-title');
     const message = document.getElementById('alarm-message');
 
-    title.textContent = reminder.title;
-    message.textContent = reminder.message || `It's time for: ${reminder.title}`;
+    title.textContent = reminderTitle || 'Reminder';
+    message.textContent = reminderMessage || `It's time for: ${reminderTitle || 'your reminder'}`;
     overlay.classList.remove('hidden');
 
-    // Speak the reminder
-    if (settings.speakReminders) {
-        setTimeout(() => {
-            const spokenMessage = reminder.message || `Hey ${userName}, it's time to ${reminder.title.toLowerCase()}.`;
-            speak(spokenMessage, settings.voice, settings.rate);
-        }, 2000); // Delay to let alarm sound play first
-    }
+    // After a short chime, stop alarm and speak the reminder
+    setTimeout(() => {
+        stopAlarmSound();
+
+        // Always speak the reminder out loud
+        speak(spokenText, settings.voice, settings.rate).then(() => {
+            // After speaking, play a soft chime again as ongoing alert
+            if (overlay && !overlay.classList.contains('hidden')) {
+                playAlarmSound(settings.alarmSound, Math.max(settings.volume * 0.3, 0.1));
+            }
+        });
+    }, 1500); // Let alarm chime play for 1.5s, then speak
 
     // Browser notification
     if (settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
-        const notif = new Notification(`RemindMe AI — ${reminder.title}`, {
-            body: reminder.message || `It's time for: ${reminder.title}`,
+        const notif = new Notification(`RemindMe AI — ${reminderTitle || 'Reminder'}`, {
+            body: reminderMessage || `It's time for: ${reminderTitle || 'your reminder'}`,
             icon: '🔔',
             tag: reminder.id,
             requireInteraction: true,
@@ -432,6 +578,7 @@ function handleAlarm(reminder) {
 
     newSnooze.addEventListener('click', async () => {
         stopAlarmSound();
+        stopSpeaking(); // Stop any ongoing speech
         overlay.classList.add('hidden');
         await snoozeReminder(reminder, settings.snoozeDuration);
         await renderReminders();
@@ -441,6 +588,7 @@ function handleAlarm(reminder) {
 
     newDismiss.addEventListener('click', async () => {
         stopAlarmSound();
+        stopSpeaking(); // Stop any ongoing speech
         overlay.classList.add('hidden');
         await completeReminder(reminder);
         await renderReminders();
@@ -1019,6 +1167,59 @@ function initSettings() {
         await setSetting('speakReminders', settings.speakReminders);
     });
 
+    // AI Server URL
+    const aiInput = document.getElementById('settings-ai-server');
+    if (aiInput) {
+        aiInput.value = settings.aiServerUrl;
+        aiInput.addEventListener('change', async (e) => {
+            let url = e.target.value.trim();
+            // Remove trailing slash
+            if (url.endsWith('/')) url = url.slice(0, -1);
+            settings.aiServerUrl = url;
+            await setSetting('aiServerUrl', settings.aiServerUrl);
+        });
+    }
+
+    // Test AI Connection
+    const testAiBtn = document.getElementById('test-ai-btn');
+    if (testAiBtn) {
+        testAiBtn.addEventListener('click', async () => {
+            if (!settings.aiServerUrl) {
+                showToast('Please enter a server URL first', 'error');
+                return;
+            }
+
+            testAiBtn.textContent = 'Testing...';
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const res = await fetch(`${settings.aiServerUrl}/health`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'ok') {
+                        showToast('Connected to AI Server! 🟢', 'success');
+                    } else {
+                        showToast('Server reachable but status not OK ⚠️', 'warning');
+                        alert(`Server Status: ${JSON.stringify(data)}`);
+                    }
+                } else {
+                    throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+                }
+            } catch (err) {
+                console.error('AI Connection failed:', err);
+                showToast('Connection Failed 🔴', 'error');
+                alert(`Error: ${err.message}\n\nURL: ${settings.aiServerUrl}/health`);
+            } finally {
+                testAiBtn.textContent = 'Test';
+            }
+        });
+    }
+
     // Export
     document.getElementById('export-data-btn').addEventListener('click', async () => {
         const data = await exportAllData();
@@ -1073,6 +1274,9 @@ function initSettings() {
     document.getElementById('settings-snooze').value = settings.snoozeDuration;
     document.getElementById('settings-notifications').checked = settings.notifications;
     document.getElementById('settings-speak').checked = settings.speakReminders;
+    if (document.getElementById('settings-ai-server')) {
+        document.getElementById('settings-ai-server').value = settings.aiServerUrl;
+    }
 }
 
 async function loadVoices() {
@@ -1257,6 +1461,104 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ==========================================
+// AI Assistant Logic (Local LLM)
+// ==========================================
+let isModelLoaded = false;
+
+async function askAI(question) {
+    // Show Overlay
+    const overlay = document.getElementById('ai-overlay');
+    const questionEl = document.getElementById('ai-question');
+    const answerEl = document.getElementById('ai-answer');
+    const closeBtn = document.getElementById('ai-close');
+    const closeBtnBottom = document.getElementById('ai-close-btn');
+    const speakBtn = document.getElementById('ai-speak-btn');
+
+    overlay.classList.remove('hidden');
+    questionEl.textContent = `"${question}"`;
+
+    // Initial loading state
+    answerEl.innerHTML = `
+        <div class="ai-loading">
+            <div class="ai-dot"></div>
+            <div class="ai-dot"></div>
+            <div class="ai-dot"></div>
+        </div>
+        <span>${isModelLoaded ? 'Thinking...' : 'Initializing Local AI (One-time)...'}</span>
+    `;
+
+    // Setup Close Handlers
+    const closeOverlay = () => {
+        overlay.classList.add('hidden');
+        stopSpeaking();
+    };
+
+    const newCloseBtn = closeBtn.cloneNode(true);
+    const newCloseBtnBottom = closeBtnBottom.cloneNode(true);
+    const newSpeakBtn = speakBtn.cloneNode(true);
+
+    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+    closeBtnBottom.parentNode.replaceChild(newCloseBtnBottom, closeBtnBottom);
+    speakBtn.parentNode.replaceChild(newSpeakBtn, speakBtn);
+
+    newCloseBtn.addEventListener('click', closeOverlay);
+    newCloseBtnBottom.addEventListener('click', closeOverlay);
+
+    try {
+        // Step 1: Load Model (if needed)
+        if (!isModelLoaded) {
+            console.log('Loading local model...');
+            const loadRes = await LlmPlugin.loadModel();
+            if (loadRes.status === 'loaded' || loadRes.status === 'already_loaded') {
+                isModelLoaded = true;
+                answerEl.innerHTML = `
+                    <div class="ai-loading">
+                        <div class="ai-dot"></div>
+                        <div class="ai-dot"></div>
+                        <div class="ai-dot"></div>
+                    </div>
+                    <span>Thinking...</span>
+                `;
+            } else {
+                throw new Error('Failed to load model: ' + JSON.stringify(loadRes));
+            }
+        }
+
+        // Step 2: Generate Response
+        console.log('Generating response for:', question);
+        const genRes = await LlmPlugin.generate({ prompt: question });
+        const answer = genRes.response;
+
+        if (answer) {
+            // Display Answer
+            answerEl.textContent = answer;
+
+            // Speak Answer
+            speak(answer, settings.voice, settings.rate);
+
+            // Re-enable Speak Button
+            newSpeakBtn.addEventListener('click', () => {
+                stopSpeaking();
+                speak(answer, settings.voice, settings.rate);
+            });
+        } else {
+            throw new Error('Empty response from AI');
+        }
+
+    } catch (err) {
+        console.error('AI Error:', err);
+        answerEl.innerHTML = `
+            <div style="color: #ff6b6b">
+                <strong>Error:</strong> ${err.message || 'Unknown error'}
+                <br><br>
+                <small>Did you copy <code>gemma-2b-it-gpu-int4.bin</code> to assets?</small>
+            </div>
+        `;
+        speak('Sorry, I had trouble with the local AI model.', settings.voice, settings.rate);
+    }
 }
 
 // ==========================================
