@@ -1170,55 +1170,87 @@ function initSettings() {
         await setSetting('speakReminders', settings.speakReminders);
     });
 
-    // AI Server URL
-    const aiInput = document.getElementById('settings-ai-server');
-    if (aiInput) {
-        aiInput.value = settings.aiServerUrl;
-        aiInput.addEventListener('change', async (e) => {
-            let url = e.target.value.trim();
-            // Remove trailing slash
-            if (url.endsWith('/')) url = url.slice(0, -1);
-            settings.aiServerUrl = url;
-            await setSetting('aiServerUrl', settings.aiServerUrl);
+    // Local AI Model Setup
+    const modelStatusEl = document.getElementById('ai-model-status');
+    const downloadBtn = document.getElementById('btn-settings-download');
+    const installBtn = document.getElementById('btn-settings-install');
+
+    // Check model status on settings load
+    if (modelStatusEl && window.Capacitor && Capacitor.isNativePlatform()) {
+        try {
+            LlmPlugin.checkModel().then(res => {
+                if (res.exists) {
+                    modelStatusEl.textContent = '✅ Model installed and ready!';
+                    modelStatusEl.style.color = '#00b894';
+                } else {
+                    modelStatusEl.textContent = '❌ Model not found. Follow steps below.';
+                    modelStatusEl.style.color = '#ff7675';
+                }
+            }).catch(() => {
+                modelStatusEl.textContent = '⚠️ Could not check (plugin error)';
+                modelStatusEl.style.color = '#fdcb6e';
+            });
+        } catch (e) {
+            modelStatusEl.textContent = '⚠️ Native plugin not available';
+            modelStatusEl.style.color = '#fdcb6e';
+        }
+    } else if (modelStatusEl) {
+        modelStatusEl.textContent = '⚠️ Only available on Android device';
+        modelStatusEl.style.color = '#fdcb6e';
+    }
+
+    // Download button
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+            if (window.Capacitor && Capacitor.isNativePlatform()) {
+                LlmPlugin.downloadModel({
+                    url: 'https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4'
+                });
+                showToast('Opening Kaggle in browser...', 'info');
+            } else {
+                window.open('https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4', '_blank');
+            }
         });
     }
 
-    // Test AI Connection
-    const testAiBtn = document.getElementById('test-ai-btn');
-    if (testAiBtn) {
-        testAiBtn.addEventListener('click', async () => {
-            if (!settings.aiServerUrl) {
-                showToast('Please enter a server URL first', 'error');
+    // Install button
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            if (!window.Capacitor || !Capacitor.isNativePlatform()) {
+                showToast('Install only works on Android device', 'error');
                 return;
             }
 
-            testAiBtn.textContent = 'Testing...';
+            installBtn.textContent = 'Installing...';
+            installBtn.disabled = true;
+
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-                const res = await fetch(`${settings.aiServerUrl}/health`, {
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.status === 'ok') {
-                        showToast('Connected to AI Server! 🟢', 'success');
-                    } else {
-                        showToast('Server reachable but status not OK ⚠️', 'warning');
-                        alert(`Server Status: ${JSON.stringify(data)}`);
+                const res = await LlmPlugin.installModel();
+                if (res.status === 'installed') {
+                    showToast('✅ Model installed successfully! Source: ' + res.source, 'success');
+                    if (modelStatusEl) {
+                        modelStatusEl.textContent = '✅ Model installed and ready!';
+                        modelStatusEl.style.color = '#00b894';
                     }
-                } else {
-                    throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+                    isModelLoaded = false; // Reset so next askAI reloads
                 }
-            } catch (err) {
-                console.error('AI Connection failed:', err);
-                showToast('Connection Failed 🔴', 'error');
-                alert(`Error: ${err.message}\n\nURL: ${settings.aiServerUrl}/health`);
+            } catch (e) {
+                console.error('Install error:', e);
+                const msg = e.message || 'Install failed';
+                let suggestion = '';
+
+                if (msg.includes('Permission') || msg.includes('EACCES')) {
+                    suggestion = '<br><br><b>Permisson Error?</b> Try ADB:<br><code>adb push gemma-2b-it-gpu-int4.bin /sdcard/Android/data/com.remindme.ai/files/</code>';
+                }
+
+                showToast('❌ ' + msg, 'error');
+                if (modelStatusEl) {
+                    modelStatusEl.innerHTML = `❌ ${msg}${suggestion}`;
+                    modelStatusEl.style.color = '#ff7675';
+                }
             } finally {
-                testAiBtn.textContent = 'Test';
+                installBtn.textContent = 'Install';
+                installBtn.disabled = false;
             }
         });
     }
@@ -1511,20 +1543,69 @@ async function askAI(question) {
     newCloseBtnBottom.addEventListener('click', closeOverlay);
 
     try {
-        // Step 1: Load Model (if needed)
+        // Step 0: Check if Model Exists
         if (!isModelLoaded) {
+            const check = await LlmPlugin.checkModel();
+            if (!check.exists) {
+                answerEl.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <h3>⚠️ AI Model Missing</h3>
+                        <p>To use offline AI, you need to download the <b>Gemma 2B</b> model once (1.3 GB).</p>
+                        
+                        <button id="btn-download" style="background: #6C5CE7; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0;">
+                            1. Download from Kaggle
+                        </button>
+                        
+                        <p style="font-size: 12px; opacity: 0.7;">(Login to Kaggle, tap 'Download', save to Downloads folder)</p>
+
+                        <button id="btn-install" style="background: #00b894; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0;">
+                            2. Install from Downloads
+                        </button>
+                        
+                        <div id="install-status" style="font-size: 12px; margin-top: 10px;"></div>
+                    </div>
+                `;
+
+                document.getElementById('btn-download').onclick = () => {
+                    LlmPlugin.downloadModel({
+                        url: 'https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4'
+                    });
+                };
+
+                document.getElementById('btn-install').onclick = async () => {
+                    const statusEl = document.getElementById('install-status');
+                    statusEl.textContent = 'Scanning Downloads folder...';
+                    statusEl.style.color = '#fdcb6e';
+
+                    try {
+                        const res = await LlmPlugin.installModel();
+                        if (res.status === 'installed') {
+                            statusEl.textContent = '✅ Model Installed! Initializing...';
+                            statusEl.style.color = '#00b894';
+                            setTimeout(() => askAI(question), 1000); // Retry
+                        }
+                    } catch (e) {
+                        statusEl.textContent = '❌ Error: ' + e.message;
+                        statusEl.style.color = '#ff7675';
+                    }
+                };
+                return; // Stop here
+            }
+
+            // If exists, load it
             console.log('Loading local model...');
+            answerEl.innerHTML = `
+                <div class="ai-loading">
+                    <div class="ai-dot"></div>
+                    <div class="ai-dot"></div>
+                    <div class="ai-dot"></div>
+                </div>
+                <span>Initializing AI Engine... (One-time)</span>
+            `;
+
             const loadRes = await LlmPlugin.loadModel();
             if (loadRes.status === 'loaded' || loadRes.status === 'already_loaded') {
                 isModelLoaded = true;
-                answerEl.innerHTML = `
-                    <div class="ai-loading">
-                        <div class="ai-dot"></div>
-                        <div class="ai-dot"></div>
-                        <div class="ai-dot"></div>
-                    </div>
-                    <span>Thinking...</span>
-                `;
             } else {
                 throw new Error('Failed to load model: ' + JSON.stringify(loadRes));
             }
