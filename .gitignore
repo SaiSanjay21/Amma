@@ -81,3 +81,8 @@ google-services.json
 # OS-specific
 .DS_Store
 Thumbs.db
+
+# AI Model files (large binaries)
+*.bin
+*.tar.gz
+*.tflite
