@@ -4,13 +4,14 @@
  */
 
 import './style.css';
-import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData, getHealthProfile } from './db.js';
+import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData, getHealthProfile, getAllHealthProfile } from './db.js';
 import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNotificationSound } from './audio.js';
 import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
 import { registerPlugin } from '@capacitor/core';
 import { renderHealthDashboard, showHealthOnboarding, checkMorningSleepPopup, scheduleHealthReminders } from './health-ui.js';
 import { handleHealthToolCall } from './health-chat.js';
+import { loadHealthKB, getPersonalisedHealthContext } from './health-rag.js';
 
 const LlmPlugin = registerPlugin('LlmPlugin');
 
@@ -132,6 +133,9 @@ async function init() {
         if (healthOnboardingDone) {
             await scheduleHealthReminders();
         }
+
+        // Load Health Knowledge Base (RAG documents)
+        loadHealthKB().catch(e => console.warn('Health KB load deferred:', e.message));
 
         console.log('🚀 RemindMe AI initialized');
     } catch (error) {
@@ -1709,6 +1713,17 @@ Available health tools:
 6. HEALTH_SUMMARY - Trigger: user asks for a health summary. {"tool":"HEALTH_SUMMARY","params":{}}
 
 IMPORTANT: Always add "ⓘ Not medical advice." to health responses. Never diagnose or prescribe.
+When answering health questions, use the HEALTH KNOWLEDGE BASE below which contains research data from NIH, CDC, and WHO. Cite specific numbers and guidelines from it.
+
+${await (async () => {
+                try {
+                    const profile = await getAllHealthProfile();
+                    return getPersonalisedHealthContext(profile, question);
+                } catch (e) {
+                    console.warn('Health RAG context error:', e);
+                    return '';
+                }
+            })()}
 
 ${contextString}\nUser: ${question}\nAmma:`;
 

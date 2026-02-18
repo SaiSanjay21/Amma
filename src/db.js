@@ -171,6 +171,15 @@ export async function setHealthProfile(key, value) {
   return addItem('user_health_profile', { key, value });
 }
 
+export async function getAllHealthProfile() {
+  const all = await getAllItems('user_health_profile');
+  const profile = {};
+  for (const item of all) {
+    profile[item.key] = item.value;
+  }
+  return profile;
+}
+
 // ==========================================
 // Health Metrics Helpers
 // ID format: health_{Date.now()}_{random}

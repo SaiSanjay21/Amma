@@ -1,0 +1,41 @@
+{
+    "id": "sleep_quality",
+    "title": "Sleep Duration, Quality & Health Impact",
+    "source": "CDC, NIH NHLBI, National Sleep Foundation, Lancet",
+    "tags": [
+        "sleep",
+        "insomnia",
+        "rest",
+        "tired",
+        "fatigue",
+        "nap",
+        "deep",
+        "rem",
+        "melatonin",
+        "circadian",
+        "bedtime",
+        "wake"
+    ],
+    "chunks": [
+        {
+            "id": "sleep_recommendations_age",
+            "title": "Recommended Sleep Duration by Age (CDC/NIH)",
+            "content": "CDC and National Sleep Foundation recommended sleep per 24 hours:\n- Newborns (0-3 months): 14-17 hours\n- Infants (4-12 months): 12-16 hours (including naps)\n- Toddlers (1-2 years): 11-14 hours (including naps)\n- Preschool (3-5 years): 10-13 hours (including naps)\n- School-age (6-12 years): 9-12 hours\n- Teens (13-18 years): 8-10 hours\n- Adults (18-60 years): 7 or more hours (CDC) / 7-9 hours (NSF)\n- Older adults (61-64): 7-9 hours\n- Seniors (65+): 7-8 hours\nConsistently sleeping <6 hours or >9 hours associated with increased mortality, cardiovascular disease, and metabolic disorders. Source: CDC, NIH NHLBI, Hirshkowitz et al. (2015)."
+        },
+        {
+            "id": "sleep_stages",
+            "title": "Sleep Stages and Architecture",
+            "content": "Normal sleep cycles through stages every 90-110 minutes, repeating 4-5 times per night:\n- N1 (light sleep): 5% of total sleep. Transition from wakefulness. Easy to wake.\n- N2 (deeper light sleep): 45% of total sleep. Heart rate slows, body temperature drops.\n- N3 (deep/slow-wave sleep): 25% of total sleep (~1.5-2h for 8h sleep). Physical restoration, tissue repair, immune function, growth hormone release. Most important for feeling rested.\n- REM (rapid eye movement): 25% of total sleep. Dreaming, memory consolidation, emotional processing.\nDeep sleep (N3) decreases with age — adults over 60 may get only 10-15% deep sleep. Source: NIH NHLBI, Healthline, American Academy of Sleep Medicine."
+        },
+        {
+            "id": "sleep_quality_indicators",
+            "title": "Sleep Quality Assessment Indicators",
+            "content": "Signs of GOOD sleep quality:\n- Fall asleep within 15-20 minutes of lying down\n- Sleep through the night (0-1 brief awakenings)\n- Wake feeling refreshed and alert\n- Consistent sleep/wake schedule (±30 min daily)\n\nSigns of POOR sleep quality:\n- Takes >30 minutes to fall asleep (sleep onset latency)\n- Wake up 3+ times per night\n- Lie awake >20 minutes after waking during the night\n- Daytime fatigue despite adequate hours\n- Rely on caffeine to stay alert\n\nThe PSQI (Pittsburgh Sleep Quality Index) scores ≤5 = good sleep, >5 = poor sleep, based on 7 components. Sleep regularity (consistent bed/wake times) may predict mortality better than duration (Lancet 2023). Source: Buysse et al. (1989), Lancet Public Health (2023)."
+        },
+        {
+            "id": "sleep_hygiene",
+            "title": "Sleep Hygiene Best Practices (CDC/NIH)",
+            "content": "Evidence-based sleep hygiene recommendations:\n1. Consistent schedule: Same bedtime and wake time daily, including weekends (±15 min).\n2. Dark, cool room: 18-20°C (65-68°F) ideal. Use blackout curtains.\n3. No screens 30-60 min before bed: Blue light (460nm) suppresses melatonin production by up to 50%.\n4. No caffeine after 2 PM: Caffeine half-life is 5-6 hours. Even small amounts can disrupt sleep architecture.\n5. No large meals 2-3 hours before bed: Digestion raises core body temperature, opposing sleep onset.\n6. No alcohol within 3 hours of bed: Alcohol reduces REM sleep and causes fragmented sleep in the second half of the night.\n7. Exercise regularly but not within 2-3 hours of bedtime.\n8. Bedroom = sleep only: Don't work, eat, or watch TV in bed (stimulus control therapy).\n9. Relaxation routine: Reading, warm bath, meditation, deep breathing.\n10. Limit naps to 20-30 minutes before 3 PM. Source: CDC, NIH NHLBI, Sleep Foundation."
+        }
+    ]
+}

@@ -1,0 +1,55 @@
+{
+    "id": "calories_nutrition",
+    "title": "Calories, BMR, TDEE & Food Nutrition",
+    "source": "NIH, ADA, USDA FoodData Central, Mifflin-St Jeor (1990)",
+    "tags": [
+        "calories",
+        "food",
+        "meal",
+        "nutrition",
+        "bmr",
+        "tdee",
+        "diet",
+        "energy",
+        "kcal",
+        "protein",
+        "carbs",
+        "fat",
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+    ],
+    "chunks": [
+        {
+            "id": "bmr_mifflin",
+            "title": "Mifflin-St Jeor BMR Equation (Gold Standard)",
+            "content": "The Mifflin-St Jeor equation (1990) is recommended by the American Dietetic Association as the most accurate BMR estimator for modern populations.\nMales: BMR = (10 × weight in kg) + (6.25 × height in cm) − (5 × age in years) + 5\nFemales: BMR = (10 × weight in kg) + (6.25 × height in cm) − (5 × age in years) − 161\nAccuracy: 82% of predictions fall within 10% of actual measured resting metabolic rate (vs 70% for Harris-Benedict). Source: Mifflin et al. 1990, ADA Evidence Analysis Library."
+        },
+        {
+            "id": "tdee_activity_factors",
+            "title": "Total Daily Energy Expenditure (TDEE) Activity Multipliers",
+            "content": "TDEE = BMR × Activity Factor. Harris-Benedict activity multipliers:\n- Sedentary (little/no exercise, desk job): BMR × 1.2\n- Lightly Active (light exercise 1-3 days/week): BMR × 1.375\n- Moderately Active (moderate exercise 3-5 days/week): BMR × 1.55\n- Very Active (hard exercise 6-7 days/week): BMR × 1.725\n- Extremely Active (very hard exercise, physical job, 2x training): BMR × 1.9\nExample: Male, 70kg, 170cm, 25y, sedentary. BMR = 10(70)+6.25(170)-5(25)+5 = 1648 kcal. TDEE = 1648 × 1.2 = 1978 kcal/day. Source: Harris & Benedict (1919), revised by Roza & Shizgal (1984)."
+        },
+        {
+            "id": "calorie_deficit_surplus",
+            "title": "Weight Loss/Gain: Calorie Deficit & Surplus",
+            "content": "Energy balance principles:\n- 1 kg of body fat ≈ 7,700 kcal of stored energy.\n- To lose 0.5 kg/week: create a 500 kcal/day deficit below TDEE.\n- To gain 0.5 kg/week: create a 500 kcal/day surplus above TDEE.\n- Minimum safe daily intake: ~1200 kcal/day for women, ~1500 kcal/day for men (below this, risk of nutrient deficiency).\n- Rapid weight loss (>1 kg/week) associated with muscle loss, gallstones, nutrient deficiency.\n- Recommended sustainable rate: 0.5-1.0 kg/week. Source: NIH NIDDK, Mayo Clinic."
+        },
+        {
+            "id": "common_food_calories",
+            "title": "Common Food Calorie Reference (USDA FoodData Central)",
+            "content": "Common food calories per typical serving (approximate, USDA averages):\nBREAKFAST:\n- 2 eggs (boiled): 155 kcal | Toast (1 slice): 80 kcal | Oatmeal (1 cup): 150 kcal\n- Cereal + milk: 200-300 kcal | Pancakes (2): 350 kcal | Greek yogurt: 130 kcal\n- Idli (2 pieces): 130 kcal | Dosa (1 plain): 120 kcal | Paratha (1): 260 kcal | Poha: 250 kcal | Upma: 200 kcal\nLUNCH/DINNER:\n- Chicken breast (150g): 230 kcal | White rice (1 cup cooked): 206 kcal\n- Roti/chapati (1): 100 kcal | Dal (1 cup): 200 kcal | Sabzi (mixed veg): 120 kcal\n- Burger (regular): 354 kcal | Pizza (1 slice, cheese): 285 kcal | Pasta (1 plate): 400 kcal\n- Biryani (1 plate): 500-700 kcal | Thali (full): 800-1200 kcal\n- Sandwich: 300-500 kcal | Bowl/salad: 300-500 kcal | Soup: 150-300 kcal\nSNACKS:\n- Apple: 95 kcal | Banana: 105 kcal | Nuts (30g): 170 kcal | Chips (1 oz): 150 kcal\n- Biscuit/cookie: 60-100 kcal | Samosa (1): 260 kcal | Vada (1): 170 kcal\nDRINKS:\n- Black coffee: 5 kcal | Coffee + milk + sugar: 60-80 kcal | Tea + milk: 30-50 kcal\n- Juice (250ml): 110 kcal | Soda (330ml): 140 kcal | Milkshake: 300 kcal\n- Lassi (sweet): 200 kcal | Smoothie: 200-400 kcal\n- Water: 0 kcal. Source: USDA FoodData Central, INDB."
+        },
+        {
+            "id": "meal_timing",
+            "title": "Optimal Meal Timing (Circadian Research)",
+            "content": "Research on meal timing and circadian rhythm (chrononutrition):\n- Breakfast: Within 1 hour of waking (6-10 AM). Breaks overnight fast, stabilises blood sugar. High-protein breakfast improves satiety and blood sugar control.\n- Lunch: 4-5 hours after breakfast (11 AM-1 PM). Metabolism peaks between 10 AM-2 PM — strongest digestive function.\n- Dinner: At least 3-4 hours before bedtime. Late eating (after 9 PM) linked to higher glucose, increased obesity risk, and metabolic syndrome.\n- Time-restricted eating (TRE): Eating within an 8-12 hour window (e.g., 8 AM-6 PM) shown to improve weight management and metabolic health even without calorie restriction.\n- Caloric front-loading: Consuming more calories in the morning improves weight loss outcomes vs eating more at dinner (Jakubowicz et al., 2013).\n- Avoid eating during melatonin rise (3+ hours before sleep) — melatonin reduces insulin release, impairing glucose processing. Source: NIH PMC, Jakubowicz et al., Satchin Panda (circadian research), MDPI Nutrients."
+        },
+        {
+            "id": "macronutrients",
+            "title": "Macronutrient Distribution Guidelines",
+            "content": "AMDR (Acceptable Macronutrient Distribution Range) per NIH/IOM:\n- Carbohydrates: 45-65% of total daily calories (primary energy source)\n- Protein: 10-35% of total daily calories (muscle maintenance/repair)\n- Fat: 20-35% of total daily calories (hormone production, vitamin absorption)\nProtein needs: General adults 0.8 g/kg/day (RDA). Active individuals: 1.2-2.0 g/kg/day.\nFibre: 25g/day women, 38g/day men (IOM). Most people get only ~15g.\n1g carbohydrate = 4 kcal | 1g protein = 4 kcal | 1g fat = 9 kcal | 1g alcohol = 7 kcal. Source: IOM Dietary Reference Intakes, NIH ODS."
+        }
+    ]
+}

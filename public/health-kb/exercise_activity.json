@@ -1,0 +1,37 @@
+{
+    "id": "exercise_activity",
+    "title": "Physical Activity & Exercise Guidelines",
+    "source": "WHO, CDC, ACSM, AHA",
+    "tags": [
+        "exercise",
+        "activity",
+        "walking",
+        "running",
+        "gym",
+        "workout",
+        "steps",
+        "fit",
+        "cardio",
+        "strength",
+        "muscle",
+        "sedentary",
+        "sitting"
+    ],
+    "chunks": [
+        {
+            "id": "who_activity_guidelines",
+            "title": "WHO Physical Activity Recommendations",
+            "content": "WHO Global Guidelines on Physical Activity (2020):\nAdults 18-64 years:\n- At least 150-300 min/week of moderate-intensity aerobic activity (brisk walking, cycling, swimming), OR\n- At least 75-150 min/week of vigorous-intensity activity (running, HIIT, sports), OR\n- An equivalent combination of moderate and vigorous activity.\n- Muscle-strengthening activities 2+ days/week (all major muscle groups).\n- Limit sedentary time. Replace sitting with any activity, even light.\nAdults 65+ years: Same as above, plus balance and fall prevention exercises 3+ days/week.\nChildren 5-17 years: 60+ min/day of moderate-to-vigorous activity. Vigorous 3+ days/week.\nKey finding: Any amount of physical activity is better than none. Even 5-10 min walks provide benefits. Source: WHO Guidelines 2020."
+        },
+        {
+            "id": "steps_and_walking",
+            "title": "Daily Steps Guidelines and Health Benefits",
+            "content": "Steps per day and mortality risk (meta-analysis, Lancet 2022):\n- <4,000 steps/day: Baseline risk (sedentary)\n- 4,000-8,000 steps/day: 40-50% reduced all-cause mortality\n- 8,000-12,000 steps/day: 50-65% reduced mortality (diminishing returns above 10,000)\n- >12,000 steps/day: Marginal additional benefit\nThe popular '10,000 steps' target originated from a Japanese marketing campaign (1965 pedometer), not scientific research. For most adults, 7,000-8,000 steps/day provides most of the health benefit.\nWalking speed matters: Brisk walking (100+ steps/min) provides more cardiovascular benefit than slow walking. Even 10-min daily brisk walks reduce disease risk. Source: Lancet Public Health (2022), Paluch et al., JAMA Internal Medicine."
+        },
+        {
+            "id": "sedentary_risks",
+            "title": "Health Risks of Prolonged Sitting",
+            "content": "Sedentary behaviour research (Lancet 2016 meta-analysis, >1 million adults):\n- Sitting >8 hours/day without physical activity increases all-cause mortality by 59%.\n- 60-75 min/day of moderate activity eliminates the increased mortality risk from prolonged sitting.\n- Even without formal exercise, breaking up sitting every 30-60 minutes with 2-5 minutes of light activity (standing, walking) improves blood sugar, blood pressure, and triglycerides.\n- Prolonged sitting increases risk of: cardiovascular disease, type 2 diabetes, deep vein thrombosis, back pain, obesity, depression.\n- Screen time >6 hours/day (beyond work) associated with higher mortality independent of physical activity. Source: Ekelund et al. (2016) Lancet, Patterson et al., AHA Scientific Statement."
+        }
+    ]
+}

@@ -1,0 +1,33 @@
+{
+    "id": "bmi_weight_height",
+    "title": "BMI, Weight & Height Guidelines",
+    "source": "WHO, NIH NHLBI, CDC",
+    "tags": [
+        "bmi",
+        "weight",
+        "height",
+        "obesity",
+        "underweight",
+        "overweight",
+        "body",
+        "fat",
+        "ideal"
+    ],
+    "chunks": [
+        {
+            "id": "bmi_classification",
+            "title": "WHO BMI Classification for Adults",
+            "content": "BMI is calculated as weight(kg) / height(m)². WHO BMI categories for adults (20+ years):\n- Severe Thinness: < 16.0\n- Moderate Thinness: 16.0 – 16.9\n- Mild Thinness: 17.0 – 18.4\n- Normal Weight: 18.5 – 24.9\n- Overweight (Pre-obese): 25.0 – 29.9\n- Obese Class I: 30.0 – 34.9\n- Obese Class II: 35.0 – 39.9\n- Obese Class III (Extreme): ≥ 40.0\nNote: For Asian populations, overweight starts at BMI 23 and obese at BMI 25 due to higher metabolic risk at lower BMI. Source: WHO Technical Report Series 894, NIH NHLBI."
+        },
+        {
+            "id": "ideal_weight_table",
+            "title": "Ideal Body Weight by Height (BMI 22 Target)",
+            "content": "Ideal body weight at BMI 22 (healthy midpoint) for various heights:\nHeight 140cm → 43.1 kg\nHeight 145cm → 46.2 kg\nHeight 150cm → 49.5 kg\nHeight 155cm → 52.9 kg\nHeight 160cm → 56.3 kg\nHeight 165cm → 59.9 kg\nHeight 170cm → 63.6 kg\nHeight 175cm → 67.4 kg\nHeight 180cm → 71.3 kg\nHeight 185cm → 75.3 kg\nHeight 190cm → 79.4 kg\nHeight 195cm → 83.7 kg\nHeight 200cm → 88.0 kg\nFormula: Ideal Weight (kg) = 22 × (height in meters)². Same for men and women. Source: WHO, NIH NHLBI."
+        },
+        {
+            "id": "bmi_limitations",
+            "title": "BMI Limitations and Additional Assessments",
+            "content": "BMI does not measure body fat directly. Limitations:\n- Muscular individuals may have high BMI but low body fat.\n- Older adults may have 'normal' BMI but high body fat (sarcopenic obesity).\n- BMI doesn't account for fat distribution — abdominal fat is higher risk.\nAdditional assessments to consider:\n- Waist circumference: Men >102cm, Women >88cm indicates elevated risk (NIH).\n- Waist-to-hip ratio: Men >0.9, Women >0.85 indicates risk (WHO).\n- Body fat percentage: Men 18-25%, Women 25-31% = acceptable (ACE). Source: NIH NHLBI, WHO."
+        }
+    ]
+}

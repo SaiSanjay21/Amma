@@ -1,0 +1,41 @@
+{
+    "id": "water_hydration",
+    "title": "Water Intake & Hydration Guidelines",
+    "source": "NIH, IOM (National Academies), ACSM, Mayo Clinic",
+    "tags": [
+        "water",
+        "hydration",
+        "drink",
+        "fluid",
+        "dehydration",
+        "thirst",
+        "kidney"
+    ],
+    "chunks": [
+        {
+            "id": "water_ai_by_age_sex",
+            "title": "Adequate Intake (AI) of Water by Age and Sex",
+            "content": "IOM/National Academies Adequate Intake for total water (beverages + food, ~20% from food):\nChildren 4-8 years: 1.7 L/day total (1.2 L from beverages, ~5 cups)\nBoys 9-13: 2.4 L/day total (1.8 L beverages, ~8 cups)\nGirls 9-13: 2.1 L/day total (1.6 L beverages, ~7 cups)\nBoys 14-18: 3.3 L/day total (2.6 L beverages, ~11 cups)\nGirls 14-18: 2.3 L/day total (1.8 L beverages, ~8 cups)\nMen 19+: 3.7 L/day total (3.0 L beverages, ~13 cups)\nWomen 19+: 2.7 L/day total (2.2 L beverages, ~9 cups)\nPregnant women: 3.0 L/day total (2.3 L beverages, ~10 cups)\nBreastfeeding women: 3.8 L/day total (3.1 L beverages, ~13 cups)\nSource: IOM Dietary Reference Intakes for Water (2004), NIH."
+        },
+        {
+            "id": "water_by_weight",
+            "title": "Water Intake Based on Body Weight",
+            "content": "General rule of thumb: 30-35 ml of water per kg of body weight per day.\nExamples:\n50 kg person → 1500-1750 ml/day\n60 kg person → 1800-2100 ml/day\n70 kg person → 2100-2450 ml/day\n80 kg person → 2400-2800 ml/day\n90 kg person → 2700-3150 ml/day\n100 kg person → 3000-3500 ml/day\nAnother common guideline: drink half your body weight in ounces (US). E.g., 150 lbs → 75 oz (~2.2 L). Source: NIH, Mayo Clinic."
+        },
+        {
+            "id": "water_exercise_adjustment",
+            "title": "Water Intake Adjustment for Exercise and Climate",
+            "content": "ACSM (American College of Sports Medicine) exercise hydration guidelines:\n- Before exercise: Drink 500 ml (2 cups) 2-3 hours before.\n- During exercise: 150-350 ml every 15-20 minutes.\n- After exercise: Drink 450-675 ml for every 0.5 kg of body weight lost during exercise.\n- For every 30 minutes of moderate exercise, add 350-500 ml to daily intake.\nClimate adjustments:\n- Hot/humid weather: Increase by 500-1000 ml/day.\n- High altitude (>2500m): Increase by 500 ml/day (faster breathing, drier air).\n- Air-conditioned/heated environments: Increase slightly (dry air). Source: ACSM Position Stand on Fluid Replacement (2007)."
+        },
+        {
+            "id": "water_timing",
+            "title": "Optimal Water Drinking Timing Throughout the Day",
+            "content": "Research-suggested optimal water timing:\n1. Morning (upon waking): 1-2 glasses — rehydrates after 6-8h sleep fast, kickstarts metabolism.\n2. 30 min before meals: 1 glass — aids digestion and may reduce calorie intake by 75 kcal per meal (Virginia Tech study, 2010).\n3. Before, during, after exercise: See ACSM guidelines above.\n4. Mid-afternoon (2-3 PM): 1-2 glasses — combats afternoon fatigue/dehydration slump.\n5. 1 hour before bed: 1 glass — prevents overnight dehydration, but not too close to bedtime to avoid sleep disruption.\nSigns of dehydration: Dark yellow urine, fatigue, headache, dizziness, dry mouth/skin. Urine should be pale straw color. Source: NIH MedlinePlus, Mayo Clinic."
+        },
+        {
+            "id": "water_overhydration",
+            "title": "Overhydration and Water Intoxication",
+            "content": "Drinking too much water too quickly can cause hyponatremia (dangerously low blood sodium). Risk threshold: >1.5 L per hour sustained, or >6 L/day total. Symptoms: nausea, headache, confusion, seizures. Most at risk: endurance athletes, people with kidney disorders. Safe rule: drink to thirst, don't force excessive amounts. The kidney can process ~0.8-1.0 L per hour. Source: NIH, BMJ Case Reports."
+        }
+    ]
+}

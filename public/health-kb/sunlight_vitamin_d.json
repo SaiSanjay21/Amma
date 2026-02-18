@@ -1,0 +1,40 @@
+{
+    "id": "sunlight_vitamin_d",
+    "title": "Sunlight Exposure, Vitamin D & Skin Health",
+    "source": "NIH ODS, WHO, Dermatology Research, Endocrine Society",
+    "tags": [
+        "sunlight",
+        "sun",
+        "vitamin",
+        "skin",
+        "uv",
+        "outside",
+        "outdoor",
+        "tan",
+        "burn",
+        "melanin",
+        "bone"
+    ],
+    "chunks": [
+        {
+            "id": "vitamin_d_sun_duration",
+            "title": "Recommended Sunlight Duration for Vitamin D Synthesis",
+            "content": "NIH Office of Dietary Supplements guidelines for vitamin D via sun:\n- 10-30 minutes of midday sun (10 AM - 3 PM) on bare skin several times per week is usually adequate for lighter-skinned individuals.\n- Expose face, arms, and legs without sunscreen during this brief window.\n- After 10-30 min, apply sunscreen SPF 30+ to prevent skin damage.\n- Best time: Solar noon ± 2 hours when UVB is strongest.\n- Frequency: 2-3 times per week minimum.\nVitamin D production drops dramatically outside the 10 AM-3 PM window because UVB is filtered by the atmosphere at low sun angles. Source: NIH ODS, Holick MF (2007)."
+        },
+        {
+            "id": "vitamin_d_skin_type",
+            "title": "Sunlight Duration by Skin Type (Fitzpatrick Scale)",
+            "content": "Melanin absorbs UVB, so darker skin needs more sun exposure for equivalent vitamin D:\nFitzpatrick Skin Type I (very fair, always burns): 10-15 min midday\nFitzpatrick Skin Type II (fair, burns easily): 15-20 min midday\nFitzpatrick Skin Type III (medium, sometimes burns): 20-30 min midday\nFitzpatrick Skin Type IV (olive, rarely burns): 30-40 min midday\nFitzpatrick Skin Type V (brown, very rarely burns): 40-60 min midday\nFitzpatrick Skin Type VI (dark brown/black, never burns): 60-80 min midday\nThese are approximate for summer, midday, at ~35° latitude (e.g., Los Angeles, New Delhi, Cairo). Multiply by 1.5-2x in winter or at higher latitudes. Source: Webb & Holick (1988), genexdiagnostics.com."
+        },
+        {
+            "id": "vitamin_d_latitude_season",
+            "title": "Vitamin D Synthesis by Latitude and Season",
+            "content": "Latitude strongly affects UVB availability:\n- Equator to 25° latitude: Year-round adequate UVB for vitamin D (3-15 min midday for light/dark skin).\n- 25-40° latitude (e.g., US South, India, Mediterranean): Adequate most of the year, limited Dec-Feb.\n- 40-50° latitude (e.g., New York, London, Beijing): 'Vitamin D winter' from Nov-Feb — little to no vitamin D synthesis even with prolonged exposure.\n- >50° latitude (e.g., Scotland, Scandinavia, Canada): Vitamin D winter from Oct-Mar — supplementation recommended.\nAdditional factors: Cloud cover reduces UVB ~50%. Air pollution reduces UVB 10-60%. Glass blocks virtually all UVB. Altitude: UVB increases ~10-12% per 1000m elevation. Source: NIH ODS, Webb et al. (1988), Engelsen (2010)."
+        },
+        {
+            "id": "vitamin_d_levels_blood",
+            "title": "Vitamin D Blood Levels and Supplementation",
+            "content": "Serum 25-hydroxyvitamin D [25(OH)D] levels (NIH/Endocrine Society):\n- Deficient: < 30 nmol/L (12 ng/mL) — risk of rickets in children, osteomalacia in adults.\n- Insufficient: 30-49 nmol/L (12-19 ng/mL) — suboptimal bone health.\n- Sufficient: 50-125 nmol/L (20-50 ng/mL) — adequate for most people.\n- High: > 125 nmol/L (50 ng/mL) — potential adverse effects.\nRDA for vitamin D supplementation (when sun is insufficient):\n- Infants (0-12 months): 400 IU/day\n- Children/Adults (1-70 years): 600 IU/day\n- Older adults (71+ years): 800 IU/day\n- Pregnant/breastfeeding: 600 IU/day\n- The Endocrine Society suggests higher amounts (1500-2000 IU/day) for adults at risk of deficiency. Source: NIH ODS, IOM DRI (2011), Endocrine Society Guidelines."
+        }
+    ]
+}
