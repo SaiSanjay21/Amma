@@ -4,11 +4,13 @@
  */
 
 import './style.css';
-import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData } from './db.js';
+import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData, getHealthProfile } from './db.js';
 import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNotificationSound } from './audio.js';
 import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
 import { registerPlugin } from '@capacitor/core';
+import { renderHealthDashboard, showHealthOnboarding, checkMorningSleepPopup, scheduleHealthReminders } from './health-ui.js';
+import { handleHealthToolCall } from './health-chat.js';
 
 const LlmPlugin = registerPlugin('LlmPlugin');
 
@@ -120,6 +122,16 @@ async function init() {
 
         // Handle PWA install prompt
         initPWAInstall();
+
+        // Health module init
+        const healthOnboardingDone = await getHealthProfile('onboardingDone', false);
+        if (!healthOnboardingDone) {
+            showHealthOnboarding();
+        }
+        await checkMorningSleepPopup();
+        if (healthOnboardingDone) {
+            await scheduleHealthReminders();
+        }
 
         console.log('🚀 RemindMe AI initialized');
     } catch (error) {
@@ -314,6 +326,7 @@ function switchView(view) {
         reminders: 'Reminders',
         notes: 'Notes',
         history: 'History',
+        health: 'Health & Habits',
         settings: 'Settings',
     };
     document.getElementById('page-title').textContent = titles[view] || view;
@@ -322,6 +335,7 @@ function switchView(view) {
     if (view === 'reminders') renderReminders();
     if (view === 'notes') renderNotes();
     if (view === 'history') renderHistory();
+    if (view === 'health') renderHealthDashboard();
 }
 
 // ==========================================
@@ -1452,6 +1466,7 @@ function showToast(message, type = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 3500);
 }
+window.__showToast = showToast;
 
 // ==========================================
 // Utility Functions
@@ -1676,7 +1691,26 @@ async function askAI(question) {
         }
 
         // Final Prompt: Tight and Focused
-        const fullPrompt = `You are Amma, a helpful assistant. Use the Context below to answer the User.\n${contextString}\nUser: ${question}\nAmma:`;
+        const fullPrompt = `You are Amma, a helpful assistant. Use the Context below to answer the User.
+
+HEALTH TRACKING — ADDITIONAL CAPABILITIES:
+You also help the user log and query health data.
+When the user mentions any of the following, respond with the exact JSON tool call format shown, then add a plain-language confirmation below it.
+
+TOOL CALL FORMAT (output this JSON, then your reply):
+{"tool": "TOOL_NAME", "params": { ... }}
+
+Available health tools:
+1. LOG_WATER - Trigger: user says they drank water. {"tool":"LOG_WATER","params":{"ml":250}} Default to 250ml if no amount mentioned.
+2. LOG_MEAL - Trigger: user describes eating food. {"tool":"LOG_MEAL","params":{"description":"burger and fries","kcal":900}} Estimate kcal from description.
+3. LOG_SLEEP - Trigger: user says how they slept. {"tool":"LOG_SLEEP","params":{"hours":7.5,"quality":8}}
+4. LOG_SUNLIGHT - Trigger: user mentions time in sunlight. {"tool":"LOG_SUNLIGHT","params":{"minutes":20}}
+5. QUERY_HEALTH - Trigger: user asks about water, calories, sleep, sunlight. {"tool":"QUERY_HEALTH","params":{"metric":"WATER_ML","range":"TODAY"}}
+6. HEALTH_SUMMARY - Trigger: user asks for a health summary. {"tool":"HEALTH_SUMMARY","params":{}}
+
+IMPORTANT: Always add "ⓘ Not medical advice." to health responses. Never diagnose or prescribe.
+
+${contextString}\nUser: ${question}\nAmma:`;
 
         // Step 3: Generate Response
         console.log('Generating response for:', fullPrompt);
@@ -1684,16 +1718,20 @@ async function askAI(question) {
         const answer = genRes.response;
 
         if (answer) {
+            // Process health tool calls
+            const healthResult = await handleHealthToolCall(answer);
+            const displayAnswer = healthResult ? answer + '\n\n' + healthResult : answer;
+
             // Display Answer
-            answerEl.textContent = answer;
+            answerEl.textContent = displayAnswer;
 
             // Speak Answer
-            speak(answer, settings.voice, settings.rate);
+            speak(displayAnswer, settings.voice, settings.rate);
 
             // Re-enable Speak Button
             newSpeakBtn.addEventListener('click', () => {
                 stopSpeaking();
-                speak(answer, settings.voice, settings.rate);
+                speak(displayAnswer, settings.voice, settings.rate);
             });
             // (No background consolidation, just pure RAG)
 

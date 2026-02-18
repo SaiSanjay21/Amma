@@ -1,10 +1,10 @@
 /**
  * RemindMe AI — IndexedDB Storage Layer
- * Persistent storage for reminders, notes, and settings
+ * Persistent storage for reminders, notes, settings, and health data
  */
 
 const DB_NAME = 'RemindMeAI';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let db = null;
 
@@ -41,6 +41,18 @@ export function openDB() {
       // Settings store
       if (!database.objectStoreNames.contains('settings')) {
         database.createObjectStore('settings', { keyPath: 'key' });
+      }
+
+      // Health metrics store (v2)
+      if (!database.objectStoreNames.contains('health_metrics')) {
+        const healthStore = database.createObjectStore('health_metrics', { keyPath: 'id' });
+        healthStore.createIndex('metricType', 'metricType', { unique: false });
+        healthStore.createIndex('loggedAt', 'loggedAt', { unique: false });
+      }
+
+      // User health profile store (v2, key-value like settings)
+      if (!database.objectStoreNames.contains('user_health_profile')) {
+        database.createObjectStore('user_health_profile', { keyPath: 'key' });
       }
     };
 
@@ -143,4 +155,53 @@ export async function deleteAllData() {
   await clearStore('notes');
   await clearStore('history');
   await clearStore('settings');
+}
+
+// ==========================================
+// Health Profile Helpers
+// (Match existing getSetting/setSetting pattern)
+// ==========================================
+
+export async function getHealthProfile(key, defaultValue = null) {
+  const item = await getItem('user_health_profile', key);
+  return item ? item.value : defaultValue;
+}
+
+export async function setHealthProfile(key, value) {
+  return addItem('user_health_profile', { key, value });
+}
+
+// ==========================================
+// Health Metrics Helpers
+// ID format: health_{Date.now()}_{random}
+// ==========================================
+
+export async function addHealthMetric(metricType, value, notes = '') {
+  const item = {
+    id: `health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    metricType,
+    value,
+    loggedAt: Date.now(),
+    notes,
+  };
+  return addItem('health_metrics', item);
+}
+
+export async function getHealthMetricsByType(metricType, fromEpoch, toEpoch) {
+  const all = await getAllItems('health_metrics');
+  return all
+    .filter(m => m.metricType === metricType && m.loggedAt >= fromEpoch && m.loggedAt <= toEpoch)
+    .sort((a, b) => a.loggedAt - b.loggedAt);
+}
+
+export async function getTodayMetrics(metricType) {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+  return getHealthMetricsByType(metricType, startOfDay, endOfDay);
+}
+
+export async function sumTodayMetric(metricType) {
+  const metrics = await getTodayMetrics(metricType);
+  return metrics.reduce((sum, m) => sum + m.value, 0);
 }

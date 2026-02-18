@@ -1917,3 +1917,167 @@ body {
 .ai-actions button {
   flex: 1;
 }
+
+/* ==========================================
+   Health & Habits Styles
+   ========================================== */
+
+.progress-track {
+  background: rgba(255,255,255,0.1);
+  border-radius: 8px;
+  height: 8px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: 8px;
+  background: var(--accent, #6C5CE7);
+  transition: width 0.4s ease;
+}
+.progress-bar.water    { background: #74b9ff; }
+.progress-bar.calories { background: #fd79a8; }
+.progress-bar.sleep    { background: #a29bfe; }
+
+.health-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+
+.quick-log-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.quick-log-row .btn {
+  flex: 1;
+  min-width: 100px;
+  font-size: 0.8rem;
+  padding: 8px;
+}
+
+/* 7-day bar chart */
+.health-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 80px;
+  margin: 8px 0;
+}
+.health-bar {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  opacity: 0.8;
+  min-height: 4px;
+  transition: height 0.3s ease;
+}
+.health-bar.water    { background: #74b9ff; }
+.health-bar.calories { background: #fd79a8; }
+.health-bar.sleep    { background: #a29bfe; }
+.health-bar-label {
+  font-size: 0.65rem;
+  color: var(--text, #e0e0e0);
+  opacity: 0.6;
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* Bottom sheet */
+.bottom-sheet {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--bg-card, #1a1a2e);
+  border-radius: 20px 20px 0 0;
+  padding: 24px 20px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(20px);
+}
+.bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 999;
+}
+
+/* Health onboarding overlay */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary, #0a0a1a);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.onboarding-card {
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  animation: slideIn 0.3s ease;
+}
+.onboarding-card h2 {
+  margin-bottom: 12px;
+}
+.onboarding-card h3 {
+  margin-bottom: 16px;
+}
+
+/* Chip buttons (for onboarding) */
+.chip-btn {
+  border-radius: 20px !important;
+  padding: 10px 20px !important;
+}
+
+/* Morning popup card */
+.popup-card {
+  position: fixed;
+  top: 20px; left: 16px; right: 16px;
+  z-index: 1500;
+  background: var(--bg-card, #1a1a2e);
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  animation: slideIn 0.3s ease;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+/* Quality / Level badges */
+.badge-low,
+.badge-poor {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255,118,117,0.2);
+  color: #ff7675;
+}
+.badge-adequate,
+.badge-fair {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(253,203,110,0.2);
+  color: #fdcb6e;
+}
+.badge-high,
+.badge-good {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(0,184,148,0.2);
+  color: #00b894;
+}

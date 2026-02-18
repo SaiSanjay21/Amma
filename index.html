@@ -88,6 +88,13 @@
           </svg>
           <span>History</span>
         </button>
+        <button class="nav-item" data-view="health" id="nav-health">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          <span>Health</span>
+        </button>
         <button class="nav-item" data-view="settings" id="nav-settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -439,6 +446,20 @@
           </div>
         </div>
       </div>
+
+      <!-- Health View -->
+      <div id="view-health" class="view">
+        <div class="view-header">
+          <div class="view-header-info">
+            <h2>Health & Habits</h2>
+            <p>Track your daily health metrics</p>
+          </div>
+        </div>
+        <div id="health-dashboard-content">
+          <!-- Populated by renderHealthDashboard() -->
+        </div>
+      </div>
+
     </main>
 
     <!-- Create/Edit Reminder Modal -->
@@ -598,6 +619,13 @@
       </div>
     </div>
   </div>
+
+  <!-- Health Onboarding Overlay (populated by showHealthOnboarding()) -->
+  <div id="health-onboarding-overlay" class="onboarding-overlay" style="display:none"></div>
+
+  <!-- Morning Sleep Popup (populated by checkMorningSleepPopup()) -->
+  <div id="morning-popup" class="popup-card" style="display:none"></div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 
