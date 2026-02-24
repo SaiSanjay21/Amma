@@ -8,12 +8,16 @@ import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, expor
 import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNotificationSound } from './audio.js';
 import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
-import { registerPlugin } from '@capacitor/core';
 import { renderHealthDashboard, showHealthOnboarding, checkMorningSleepPopup, scheduleHealthReminders } from './health-ui.js';
 import { handleHealthToolCall } from './health-chat.js';
 import { loadHealthKB, getPersonalisedHealthContext } from './health-rag.js';
-
-const LlmPlugin = registerPlugin('LlmPlugin');
+import {
+    initLLM, generateResponse, checkModel, loadModel,
+    downloadModel, installModel, isModelReady,
+    getPlatformInfo, setApiKey, getApiKey, hasApiKey
+} from './llm-bridge.js';
+import { startWakeListener, stopWakeListener, isWakeListenerActive } from './wake-listener.js';
+import { processConversation } from './auto-action.js';
 
 // ==========================================
 // App State
@@ -137,10 +141,141 @@ async function init() {
         // Load Health Knowledge Base (RAG documents)
         loadHealthKB().catch(e => console.warn('Health KB load deferred:', e.message));
 
+        // Initialize LLM Bridge (web Gemini API or native Gemma 2B)
+        await initLLM();
+
+        // Start Always-On Wake Listener
+        initAlwaysOnListener();
+
         console.log('🚀 RemindMe AI initialized');
     } catch (error) {
         console.error('Init error:', error);
     }
+}
+
+// ==========================================
+// Always-On Wake Listener Integration
+// ==========================================
+
+function initAlwaysOnListener() {
+    const convoOverlay = document.getElementById('convo-overlay');
+    const convoStatus = document.getElementById('convo-status');
+    const convoTranscript = document.getElementById('convo-transcript');
+    const wakePill = document.getElementById('wake-status');
+    const wakeText = document.getElementById('wake-status-text');
+
+    // Show wake pill
+    if (wakePill) wakePill.classList.remove('hidden');
+
+    // Toggle wake listener on pill click
+    if (wakePill) {
+        wakePill.addEventListener('click', () => {
+            if (isWakeListenerActive()) {
+                stopWakeListener();
+                wakePill.classList.add('inactive');
+                wakeText.textContent = 'Wake listener paused';
+            } else {
+                startWake();
+            }
+        });
+    }
+
+    function startWake() {
+        startWakeListener({
+            onWakeDetected: () => {
+                // Show conversation overlay
+                if (convoOverlay) convoOverlay.classList.remove('hidden');
+                if (convoStatus) convoStatus.textContent = 'I\'m listening...';
+                if (convoTranscript) convoTranscript.textContent = '';
+                playNotificationSound();
+            },
+
+            onConversationUpdate: (text) => {
+                // Update live transcript
+                if (convoTranscript) convoTranscript.textContent = text;
+            },
+
+            onConversationEnd: async (transcript) => {
+                // Conversation ended — process with AI
+                if (convoStatus) convoStatus.textContent = 'Processing...';
+
+                if (!transcript) {
+                    // No speech captured
+                    if (convoOverlay) convoOverlay.classList.add('hidden');
+                    return;
+                }
+
+                await processConversation(transcript, userName, {
+                    onAction: (type, data) => {
+                        console.log(`✅ Auto-created ${type}:`, data);
+                        // Refresh lists
+                        if (type === 'reminder') renderReminders();
+                        if (type === 'note') renderNotes();
+                        showToast(`${type === 'reminder' ? '⏰' : '📝'} ${data.title || type} created via voice`, 'success');
+                    },
+
+                    onSpeak: (text) => {
+                        speak(text, settings.voice, settings.rate);
+                        if (convoTranscript) convoTranscript.textContent = text;
+                        if (convoStatus) convoStatus.textContent = 'Amma says...';
+                    },
+
+                    onClarify: (clarification) => {
+                        // AI wants to ask a question — speak it and keep conversation open
+                        const q = clarification.question;
+                        const opts = clarification.options;
+                        let spk = q;
+                        if (opts && opts.length > 0) {
+                            spk += ' Your options are: ' + opts.join(', ') + '.';
+                        }
+                        speak(spk, settings.voice, settings.rate);
+                        if (convoStatus) convoStatus.textContent = 'Waiting for your answer...';
+                        if (convoTranscript) convoTranscript.textContent = spk;
+                        // The wake listener will restart and catch the response
+                    },
+
+                    onError: (err) => {
+                        console.error('Auto-action error:', err);
+                    },
+
+                    onComplete: () => {
+                        // Close overlay after 3 seconds so user can see the response
+                        setTimeout(() => {
+                            if (convoOverlay) convoOverlay.classList.add('hidden');
+                        }, 3000);
+                    },
+                });
+            },
+
+            onStatusChange: (status) => {
+                // Update wake pill UI
+                if (wakePill) wakePill.classList.remove('inactive');
+                switch (status) {
+                    case 'listening':
+                        if (wakeText) wakeText.textContent = 'Say "Amma" to talk';
+                        break;
+                    case 'conversation':
+                        if (wakeText) wakeText.textContent = '🎙 Listening...';
+                        break;
+                    case 'processing':
+                        if (wakeText) wakeText.textContent = '⏳ Processing...';
+                        break;
+                    case 'idle':
+                        if (wakePill) wakePill.classList.add('inactive');
+                        if (wakeText) wakeText.textContent = 'Wake listener off';
+                        break;
+                }
+            },
+
+            onError: (err) => {
+                console.error('Wake listener error:', err);
+                showToast('Voice: ' + err, 'error');
+            },
+        });
+    }
+
+    // Auto-start after a brief delay (let user see the app first)
+    setTimeout(() => startWake(), 2000);
 }
 
 // ==========================================
@@ -1188,89 +1323,112 @@ function initSettings() {
         await setSetting('speakReminders', settings.speakReminders);
     });
 
-    // Local AI Model Setup
+    // AI Engine Setup (platform-aware)
     const modelStatusEl = document.getElementById('ai-model-status');
+    const webSettingsEl = document.getElementById('ai-web-settings');
+    const nativeSettingsEl = document.getElementById('ai-native-settings');
     const downloadBtn = document.getElementById('btn-settings-download');
     const installBtn = document.getElementById('btn-settings-install');
 
-    // Check model status on settings load
-    if (modelStatusEl && window.Capacitor && Capacitor.isNativePlatform()) {
-        try {
-            LlmPlugin.checkModel().then(res => {
-                if (res.exists) {
-                    modelStatusEl.textContent = '✅ Model installed and ready!';
-                    modelStatusEl.style.color = '#00b894';
-                } else {
-                    modelStatusEl.textContent = '❌ Model not found. Follow steps below.';
-                    modelStatusEl.style.color = '#ff7675';
-                }
-            }).catch(() => {
-                modelStatusEl.textContent = '⚠️ Could not check (plugin error)';
-                modelStatusEl.style.color = '#fdcb6e';
-            });
-        } catch (e) {
-            modelStatusEl.textContent = '⚠️ Native plugin not available';
-            modelStatusEl.style.color = '#fdcb6e';
-        }
-    } else if (modelStatusEl) {
-        modelStatusEl.textContent = '⚠️ Only available on Android device';
-        modelStatusEl.style.color = '#fdcb6e';
-    }
+    const platformInfo = getPlatformInfo();
 
-    // Download button
-    if (downloadBtn) {
-        downloadBtn.addEventListener('click', () => {
-            if (window.Capacitor && Capacitor.isNativePlatform()) {
-                LlmPlugin.downloadModel({
-                    url: 'https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4'
-                });
-                showToast('Opening Kaggle in browser...', 'info');
+    if (platformInfo.isWeb) {
+        // Web mode: show API key settings
+        if (webSettingsEl) webSettingsEl.style.display = 'block';
+        if (nativeSettingsEl) nativeSettingsEl.style.display = 'none';
+
+        if (modelStatusEl) {
+            if (hasApiKey()) {
+                modelStatusEl.textContent = '✅ Gemini API ready (Web mode)';
+                modelStatusEl.style.color = '#00b894';
             } else {
-                window.open('https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4', '_blank');
+                modelStatusEl.textContent = '⚠️ Add your free Gemini API key below';
+                modelStatusEl.style.color = '#fdcb6e';
             }
-        });
-    }
+        }
 
-    // Install button
-    if (installBtn) {
-        installBtn.addEventListener('click', async () => {
-            if (!window.Capacitor || !Capacitor.isNativePlatform()) {
-                showToast('Install only works on Android device', 'error');
-                return;
-            }
+        // Load saved key into input
+        const apiKeyInput = document.getElementById('settings-api-key');
+        if (apiKeyInput) apiKeyInput.value = getApiKey();
 
-            installBtn.textContent = 'Installing...';
-            installBtn.disabled = true;
-
-            try {
-                const res = await LlmPlugin.installModel();
-                if (res.status === 'installed') {
-                    showToast('✅ Model installed successfully! Source: ' + res.source, 'success');
+        // Save key button
+        const saveKeyBtn = document.getElementById('btn-save-api-key');
+        if (saveKeyBtn) {
+            saveKeyBtn.addEventListener('click', () => {
+                const key = document.getElementById('settings-api-key')?.value?.trim();
+                if (key && key.length > 10) {
+                    setApiKey(key);
+                    showToast('✅ API key saved!', 'success');
                     if (modelStatusEl) {
-                        modelStatusEl.textContent = '✅ Model installed and ready!';
+                        modelStatusEl.textContent = '✅ Gemini API ready (Web mode)';
                         modelStatusEl.style.color = '#00b894';
                     }
-                    isModelLoaded = false; // Reset so next askAI reloads
+                } else {
+                    showToast('❌ Invalid API key', 'error');
                 }
+            });
+        }
+    } else {
+        // Native mode: show model download/install
+        if (webSettingsEl) webSettingsEl.style.display = 'none';
+        if (nativeSettingsEl) nativeSettingsEl.style.display = 'block';
+
+        if (modelStatusEl) {
+            try {
+                checkModel().then(res => {
+                    if (res.exists) {
+                        modelStatusEl.textContent = '✅ Gemma 2B installed and ready!';
+                        modelStatusEl.style.color = '#00b894';
+                    } else {
+                        modelStatusEl.textContent = '❌ Model not found. Follow steps below.';
+                        modelStatusEl.style.color = '#ff7675';
+                    }
+                }).catch(() => {
+                    modelStatusEl.textContent = '⚠️ Could not check (plugin error)';
+                    modelStatusEl.style.color = '#fdcb6e';
+                });
             } catch (e) {
-                console.error('Install error:', e);
-                const msg = e.message || 'Install failed';
-                let suggestion = '';
-
-                if (msg.includes('Permission') || msg.includes('EACCES')) {
-                    suggestion = '<br><br><b>Permisson Error?</b> Try ADB:<br><code>adb push gemma-2b-it-gpu-int4.bin /sdcard/Android/data/com.remindme.ai/files/</code>';
-                }
-
-                showToast('❌ ' + msg, 'error');
-                if (modelStatusEl) {
-                    modelStatusEl.innerHTML = `❌ ${msg}${suggestion}`;
-                    modelStatusEl.style.color = '#ff7675';
-                }
-            } finally {
-                installBtn.textContent = 'Install';
-                installBtn.disabled = false;
+                modelStatusEl.textContent = '⚠️ Native plugin not available';
+                modelStatusEl.style.color = '#fdcb6e';
             }
-        });
+        }
+
+        // Download button
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+                downloadModel('https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4');
+                showToast('Opening Kaggle in browser...', 'info');
+            });
+        }
+
+        // Install button
+        if (installBtn) {
+            installBtn.addEventListener('click', async () => {
+                installBtn.textContent = 'Installing...';
+                installBtn.disabled = true;
+
+                try {
+                    const res = await installModel();
+                    if (res.status === 'installed') {
+                        showToast('✅ Model installed! Source: ' + res.source, 'success');
+                        if (modelStatusEl) {
+                            modelStatusEl.textContent = '✅ Gemma 2B installed and ready!';
+                            modelStatusEl.style.color = '#00b894';
+                        }
+                        isModelLoaded = false;
+                    }
+                } catch (e) {
+                    showToast('❌ ' + (e.message || 'Install failed'), 'error');
+                    if (modelStatusEl) {
+                        modelStatusEl.textContent = '❌ ' + (e.message || 'Install failed');
+                        modelStatusEl.style.color = '#ff7675';
+                    }
+                } finally {
+                    installBtn.textContent = 'Install';
+                    installBtn.disabled = false;
+                }
+            });
+        }
     }
 
     // Export
@@ -1562,56 +1720,79 @@ async function askAI(question) {
     newCloseBtnBottom.addEventListener('click', closeOverlay);
 
     try {
-        // Step 0: Check if Model Exists
-        if (!isModelLoaded) {
-            const check = await LlmPlugin.checkModel();
-            if (!check.exists) {
+        const platformInfo = getPlatformInfo();
+
+        // Step 0: Ensure AI is ready
+        if (!isModelReady()) {
+            if (platformInfo.isWeb) {
+                // Web mode: need API key
                 answerEl.innerHTML = `
                     <div style="text-align: center; padding: 20px;">
-                        <h3>⚠️ AI Model Missing</h3>
-                        <p>To use offline AI, you need to download the <b>Gemma 2B</b> model once (1.3 GB).</p>
-                        
-                        <button id="btn-download" style="background: #6C5CE7; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0;">
-                            1. Download from Kaggle
+                        <h3>🔑 API Key Needed</h3>
+                        <p>To use AI in the browser, add your free <b>Gemini API</b> key.</p>
+                        <p style="margin: 12px 0;">
+                            <a href="https://aistudio.google.com/apikey" target="_blank" 
+                               style="color: var(--accent-primary); text-decoration: underline;">
+                                Get free key from Google AI Studio →
+                            </a>
+                        </p>
+                        <input type="text" id="inline-api-key" placeholder="Paste API key here..." 
+                               style="width:100%; padding:12px; background:var(--bg-tertiary); border:1px solid var(--card-border); border-radius:8px; color:var(--text-primary); font-family:var(--font-family); margin:8px 0;" />
+                        <button id="btn-inline-save-key" class="btn btn-primary" style="width:100%; padding:12px; margin-top:8px;">
+                            Save & Continue
                         </button>
-                        
-                        <p style="font-size: 12px; opacity: 0.7;">(Login to Kaggle, tap 'Download', save to Downloads folder)</p>
-
-                        <button id="btn-install" style="background: #00b894; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0;">
-                            2. Install from Downloads
-                        </button>
-                        
-                        <div id="install-status" style="font-size: 12px; margin-top: 10px;"></div>
                     </div>
                 `;
-
-                document.getElementById('btn-download').onclick = () => {
-                    LlmPlugin.downloadModel({
-                        url: 'https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4'
-                    });
-                };
-
-                document.getElementById('btn-install').onclick = async () => {
-                    const statusEl = document.getElementById('install-status');
-                    statusEl.textContent = 'Scanning Downloads folder...';
-                    statusEl.style.color = '#fdcb6e';
-
-                    try {
-                        const res = await LlmPlugin.installModel();
-                        if (res.status === 'installed') {
-                            statusEl.textContent = '✅ Model Installed! Initializing...';
-                            statusEl.style.color = '#00b894';
-                            setTimeout(() => askAI(question), 1000); // Retry
-                        }
-                    } catch (e) {
-                        statusEl.textContent = '❌ Error: ' + e.message;
-                        statusEl.style.color = '#ff7675';
+                document.getElementById('btn-inline-save-key').onclick = () => {
+                    const key = document.getElementById('inline-api-key')?.value?.trim();
+                    if (key && key.length > 10) {
+                        setApiKey(key);
+                        askAI(question); // Retry
+                    } else {
+                        showToast('Invalid API key', 'error');
                     }
                 };
-                return; // Stop here
+                return;
+            } else {
+                // Native mode: need model download
+                const check = await checkModel();
+                if (!check.exists) {
+                    answerEl.innerHTML = `
+                        <div style="text-align: center; padding: 20px;">
+                            <h3>⚠️ AI Model Missing</h3>
+                            <p>Download the <b>Gemma 2B</b> model once (1.3 GB).</p>
+                            <button id="btn-download" class="btn btn-primary" style="width:100%; margin:10px 0; padding:12px;">
+                                1. Download from Kaggle
+                            </button>
+                            <button id="btn-install" class="btn btn-secondary" style="width:100%; margin:10px 0; padding:12px;">
+                                2. Install from Downloads
+                            </button>
+                            <div id="install-status" style="font-size: 12px; margin-top: 10px;"></div>
+                        </div>
+                    `;
+                    document.getElementById('btn-download').onclick = () => {
+                        downloadModel('https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4');
+                    };
+                    document.getElementById('btn-install').onclick = async () => {
+                        const statusEl = document.getElementById('install-status');
+                        statusEl.textContent = 'Scanning Downloads...';
+                        try {
+                            const res = await installModel();
+                            if (res.status === 'installed') {
+                                statusEl.textContent = '✅ Installed! Retrying...';
+                                setTimeout(() => askAI(question), 1000);
+                            }
+                        } catch (e) {
+                            statusEl.textContent = '❌ ' + e.message;
+                        }
+                    };
+                    return;
+                }
             }
+        }
 
-            // If exists, load it
+        // Load model if native and not yet loaded  
+        if (platformInfo.isNative && !isModelLoaded) {
             console.log('Loading local model...');
             answerEl.innerHTML = `
                 <div class="ai-loading">
@@ -1621,8 +1802,7 @@ async function askAI(question) {
                 </div>
                 <span>Initializing AI Engine... (One-time)</span>
             `;
-
-            const loadRes = await LlmPlugin.loadModel();
+            const loadRes = await loadModel();
             if (loadRes.status === 'loaded' || loadRes.status === 'already_loaded') {
                 isModelLoaded = true;
             } else {
@@ -1729,8 +1909,7 @@ ${contextString}\nUser: ${question}\nAmma:`;
 
         // Step 3: Generate Response
         console.log('Generating response for:', fullPrompt);
-        const genRes = await LlmPlugin.generate({ prompt: fullPrompt });
-        const answer = genRes.response;
+        const answer = await generateResponse(fullPrompt);
 
         if (answer) {
             // Process health tool calls
@@ -1748,7 +1927,6 @@ ${contextString}\nUser: ${question}\nAmma:`;
                 stopSpeaking();
                 speak(displayAnswer, settings.voice, settings.rate);
             });
-            // (No background consolidation, just pure RAG)
 
         } else {
             throw new Error('Empty response from AI');
@@ -1756,14 +1934,15 @@ ${contextString}\nUser: ${question}\nAmma:`;
 
     } catch (err) {
         console.error('AI Error:', err);
+        const info = getPlatformInfo();
         answerEl.innerHTML = `
             <div style="color: #ff6b6b">
                 <strong>Error:</strong> ${err.message || 'Unknown error'}
                 <br><br>
-                <small>Did you copy <code>gemma-2b-it-gpu-int4.bin</code> to assets?</small>
+                <small>${info.isWeb ? 'Check your Gemini API key in Settings.' : 'Is the Gemma 2B model installed?'}</small>
             </div>
         `;
-        speak('Sorry, I had trouble with the local AI model.', settings.voice, settings.rate);
+        speak('Sorry, I had trouble processing that.', settings.voice, settings.rate);
     }
 }
 

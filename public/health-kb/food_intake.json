@@ -1,0 +1,39 @@
+{
+    "id": "food_intake",
+    "title": "Food Intake, Meal Planning & Nutrition Timing",
+    "source": "USDA, WHO, American Dietetic Association, NIH",
+    "tags": [
+        "food",
+        "meal",
+        "eat",
+        "nutrition",
+        "diet",
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack",
+        "portion"
+    ],
+    "chunks": [
+        {
+            "id": "food_meal_frequency",
+            "title": "Optimal Meal Frequency & Timing",
+            "content": "Research consensus on meal timing: Eat within 1-2 hours of waking (breakfast kickstarts metabolism). Main meals: 3 per day, spaced 4-5 hours apart. Snacks: 1-2 small ones if meals are >5 hours apart (150-200 kcal each). Ideal meal times: Breakfast 7-9 AM, Lunch 12-1 PM, Dinner 6-7 PM. Eating window: Finish dinner 2-3 hours before bedtime (reduces acid reflux, improves sleep quality). Late-night eating (after 9 PM) is associated with weight gain and poor sleep. Source: American Dietetic Association, Chrononutrition research."
+        },
+        {
+            "id": "food_portion_control",
+            "title": "Healthy Portion Sizes (Hand Measurement Guide)",
+            "content": "USDA-aligned portion guide using hand measurements: Protein (meat, fish): Palm of hand (~100g, ~3-4 oz). Carbs (rice, pasta): Cupped hand (~1 cup cooked, 200 kcal). Vegetables: Two open handfuls (~2 cups, unlimited). Fats (oils, nuts): Thumb tip (~1 tbsp, 100 kcal). Cheese: Two finger-widths (~30g, 100 kcal). Fruit: Fist-sized (~1 medium fruit, 60-80 kcal). Plate rule: Half plate vegetables, quarter protein, quarter carbs. Source: USDA MyPlate guidelines, British Nutrition Foundation."
+        },
+        {
+            "id": "food_common_calories",
+            "title": "Common Food Calorie Reference",
+            "content": "Quick calorie reference for common foods: Rice (1 cup cooked): 210 kcal. Bread (1 slice): 80 kcal. Egg (1 large): 78 kcal. Chicken breast (100g): 165 kcal. Banana: 105 kcal. Apple: 95 kcal. Milk (1 cup): 150 kcal. Coffee (black): 2 kcal, with milk: 60 kcal. Pizza (1 slice): 285 kcal. Burger (regular): 350 kcal. Salad (with dressing): 200 kcal. Dal/lentils (1 cup): 230 kcal. Roti/chapati (1): 120 kcal. Idli (1): 58 kcal. Dosa (1 plain): 120 kcal. Biryani (1 plate): 450-650 kcal. Source: USDA FoodData Central, IFCT."
+        },
+        {
+            "id": "food_hydration_with_meals",
+            "title": "Water & Beverages with Meals",
+            "content": "Drinking water 30 min before meals can reduce calorie intake by 75 kcal per meal (Virginia Tech, 2010). Small sips during meals are fine; large amounts may dilute digestive enzymes (no strong evidence against, but moderation is sensible). Best after-meal beverages: warm water or herbal tea (aids digestion). Avoid sugary drinks with meals (adds 150-250 kcal per serving). Coffee after meals may reduce iron absorption by up to 80% — wait 1 hour if anemic. Source: NIH, European Journal of Clinical Nutrition."
+        }
+    ]
+}

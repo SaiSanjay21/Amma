@@ -40,6 +40,8 @@ const KB_FILES = [
     'health-kb/sleep_quality.json',
     'health-kb/sunlight_vitamin_d.json',
     'health-kb/exercise_activity.json',
+    'health-kb/time_management.json',
+    'health-kb/food_intake.json',
 ];
 
 // All chunks across all documents, loaded once
@@ -129,6 +131,14 @@ const SYNONYMS = {
     'healthy': ['health', 'wellness', 'fit', 'good'],
     'skin': ['sunlight', 'melanin', 'fitzpatrick', 'burn', 'tan'],
     'sitting': ['sedentary', 'chair', 'desk', 'inactive'],
+    'time': ['schedule', 'planning', 'routine', 'productivity', 'manage'],
+    'schedule': ['time', 'planning', 'routine', 'calendar'],
+    'productivity': ['focus', 'pomodoro', 'efficiency', 'time'],
+    'focus': ['concentration', 'attention', 'distraction', 'pomodoro'],
+    'routine': ['morning', 'schedule', 'habit', 'daily'],
+    'meal': ['food', 'eat', 'breakfast', 'lunch', 'dinner', 'portion', 'snack'],
+    'portion': ['serving', 'size', 'plate', 'amount'],
+    'planning': ['schedule', 'organize', 'time', 'routine'],
 };
 
 /**

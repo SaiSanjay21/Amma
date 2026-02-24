@@ -1,0 +1,36 @@
+{
+    "id": "time_management",
+    "title": "Time Management & Productivity",
+    "source": "Harvard Business Review, APA, National Sleep Foundation",
+    "tags": [
+        "time",
+        "productivity",
+        "schedule",
+        "focus",
+        "procrastination",
+        "planning",
+        "routine"
+    ],
+    "chunks": [
+        {
+            "id": "time_pomodoro",
+            "title": "Pomodoro Technique & Focus Intervals",
+            "content": "The Pomodoro Technique (Francesco Cirillo, 1980s): Work in 25-minute focused intervals, then take a 5-minute break. After 4 intervals (2 hours), take a 15-30 minute break. Research shows this reduces mental fatigue and improves sustained attention. Variations: 50/10 for deep work, 90/20 for creative work (matching ultradian rhythms). Key: eliminate all distractions during focus intervals. Source: Cirillo (2006), APA research on sustained attention."
+        },
+        {
+            "id": "time_morning_routine",
+            "title": "Optimal Morning Routine for Productivity",
+            "content": "Research-backed morning routine: 1) Wake at consistent time (±30 min, even weekends) — stabilises circadian rhythm. 2) Get 5-10 min sunlight within 30 min of waking — resets cortisol cycle (Huberman Lab). 3) Hydrate: 500ml water upon waking. 4) Delay caffeine 90 min after waking (adenosine clearance). 5) Do most cognitively demanding task in first 2-3 hours (cortisol peak). 6) Avoid phone/email for first 30 min (reduces reactive mindset). Source: Sleep Foundation, Huberman Lab, Harvard Business Review."
+        },
+        {
+            "id": "time_task_batching",
+            "title": "Task Batching & Context Switching Costs",
+            "content": "Context switching between tasks costs 15-25 minutes of recovery time per switch (University of California, Irvine). Solution: Batch similar tasks together. Email: check 2-3 times/day at set times, not continuously. Meetings: batch into 1-2 blocks per day. Deep work: schedule 2-4 hour uninterrupted blocks. Admin tasks: batch into one session. Key principle: 'Maker's Schedule vs Manager's Schedule' (Paul Graham) — creators need long uninterrupted blocks, managers work in 30-min slots."
+        },
+        {
+            "id": "time_energy_management",
+            "title": "Energy Management Throughout the Day",
+            "content": "Typical energy/alertness curve: Peak 1: 9-11 AM (cortisol high, ideal for analytical work). Dip: 1-3 PM (post-lunch circadian dip — do routine/admin tasks). Peak 2: 4-6 PM (second wind, good for creative work). Evening decline: After 7 PM (wind down, planning for next day). Tips: Eat light lunch to reduce afternoon dip. 10-20 min nap or walk at 1-2 PM boosts afternoon performance by 34% (NASA study). Plan hardest tasks during energy peaks. Source: National Sleep Foundation, NASA fatigue study."
+        }
+    ]
+}
