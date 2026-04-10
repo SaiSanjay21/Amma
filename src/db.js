@@ -1,12 +1,39 @@
 /**
  * RemindMe AI — IndexedDB Storage Layer
- * Persistent storage for reminders, notes, and settings
+ * Persistent storage for reminders, notes, and settings.
+ *
+ * Now includes sync hooks: after every write operation, the changed store
+ * is pushed to Google Drive in the background (if the user is signed in).
  */
 
 const DB_NAME = 'RemindMeAI';
 const DB_VERSION = 1;
 
 let db = null;
+
+// Sync callback — set by drive.js via setSyncCallback()
+let syncCallback = null;
+
+/**
+ * Register a callback that is invoked after every write.
+ * drive.js calls this to wire up pushStoreToDrive().
+ * @param {Function} cb - called with (storeName: string)
+ */
+export function setSyncCallback(cb) {
+  syncCallback = cb;
+}
+
+/**
+ * Debounce sync pushes per store so rapid writes don't spam the API.
+ */
+const syncTimers = {};
+function triggerSync(storeName) {
+  if (!syncCallback) return;
+  clearTimeout(syncTimers[storeName]);
+  syncTimers[storeName] = setTimeout(() => {
+    syncCallback(storeName);
+  }, 2000); // Wait 2s of idle before pushing
+}
 
 export function openDB() {
   return new Promise((resolve, reject) => {
@@ -61,7 +88,10 @@ export function addItem(storeName, item) {
   return new Promise((resolve, reject) => {
     const store = getStore(storeName, 'readwrite');
     const request = store.put(item);
-    request.onsuccess = () => resolve(item);
+    request.onsuccess = () => {
+      triggerSync(storeName);
+      resolve(item);
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -88,7 +118,10 @@ export function deleteItem(storeName, id) {
   return new Promise((resolve, reject) => {
     const store = getStore(storeName, 'readwrite');
     const request = store.delete(id);
-    request.onsuccess = () => resolve();
+    request.onsuccess = () => {
+      triggerSync(storeName);
+      resolve();
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -143,4 +176,9 @@ export async function deleteAllData() {
   await clearStore('notes');
   await clearStore('history');
   await clearStore('settings');
+  // Sync triggers will fire for each store
+  triggerSync('reminders');
+  triggerSync('notes');
+  triggerSync('history');
+  triggerSync('settings');
 }

@@ -301,6 +301,41 @@ body {
   color: var(--danger);
 }
 
+/* Cloud Sync Status */
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+
+.sync-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--accent-secondary);
+  transition: transform 0.3s ease;
+}
+
+.sync-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sync-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ==========================================
    Main Content
    ========================================== */

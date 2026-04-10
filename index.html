@@ -30,6 +30,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
     rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+
+  <!-- Google Identity Services (for Google Sign-In) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
 <body>
@@ -98,6 +101,17 @@
         </button>
       </nav>
       <div class="sidebar-footer">
+        <!-- Sync Status -->
+        <div class="sync-status" id="sync-status" title="Cloud sync status">
+          <div class="sync-icon" id="sync-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </div>
+          <span id="sync-status-text">Not signed in</span>
+        </div>
         <div class="voice-status" id="voice-status">
           <div class="voice-dot"></div>
           <span>Voice Ready</span>
@@ -386,6 +400,40 @@
                   <input type="checkbox" id="settings-speak" checked />
                   <span class="toggle-slider"></span>
                 </label>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>☁️ Cloud Sync (Google Drive)</h3>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <label>Google Account</label>
+                  <p id="cloud-account-info">Not signed in</p>
+                </div>
+                <div id="cloud-auth-actions">
+                  <button id="btn-google-signin" class="btn btn-primary">Sign in with Google</button>
+                </div>
+              </div>
+              <div id="cloud-signed-in-section" class="hidden">
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <label>Sync Status</label>
+                    <p id="cloud-sync-status">—</p>
+                  </div>
+                  <button id="btn-sync-now" class="btn btn-secondary">Sync Now</button>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <label>Last Synced</label>
+                    <p id="cloud-last-sync">Never</p>
+                  </div>
+                </div>
+                <div class="setting-row danger">
+                  <div class="setting-info">
+                    <label>Sign Out</label>
+                    <p>Disconnect your Google account</p>
+                  </div>
+                  <button id="btn-google-signout" class="btn btn-ghost">Sign Out</button>
+                </div>
               </div>
             </div>
             <div class="settings-section">

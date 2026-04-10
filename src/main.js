@@ -4,11 +4,13 @@
  */
 
 import './style.css';
-import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData } from './db.js';
+import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData, setSyncCallback } from './db.js';
 import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNotificationSound } from './audio.js';
 import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
 import { registerPlugin } from '@capacitor/core';
+import { initAuth, signIn, signOut, isSignedIn, getUserInfo } from './auth.js';
+import { initSync, fullSync, pushStoreToDrive, deleteCloudData, getLastSyncTime } from './drive.js';
 
 const LlmPlugin = registerPlugin('LlmPlugin');
 
@@ -120,6 +122,25 @@ async function init() {
 
         // Handle PWA install prompt
         initPWAInstall();
+
+        // Initialize Google Auth & Cloud Sync
+        await initAuth(handleAuthStateChange);
+        initSync(handleSyncStatusChange);
+
+        // Wire up db.js → drive.js sync callback
+        setSyncCallback((storeName) => {
+            pushStoreToDrive(storeName);
+        });
+
+        // If signed in, do an initial sync
+        if (isSignedIn()) {
+            updateCloudUI(getUserInfo());
+            fullSync().then(() => {
+                // Re-render after sync pulls new data
+                renderReminders();
+                renderNotes();
+            });
+        }
 
         console.log('🚀 RemindMe AI initialized');
     } catch (error) {
@@ -1294,12 +1315,68 @@ function initSettings() {
     document.getElementById('delete-data-btn').addEventListener('click', async () => {
         if (await showConfirm('⚠️ Delete ALL Data', 'This will permanently delete all your reminders, notes, and history. This action cannot be undone!', 'Delete Everything')) {
             await deleteAllData();
+            // Also delete cloud data if signed in
+            if (isSignedIn()) {
+                await deleteCloudData();
+            }
             await renderReminders();
             await renderNotes();
             await renderHistory();
             showToast('All data deleted', 'info');
         }
     });
+
+    // ---- Cloud Sync Settings ----
+    const signInBtn = document.getElementById('btn-google-signin');
+    const signOutBtn = document.getElementById('btn-google-signout');
+    const syncNowBtn = document.getElementById('btn-sync-now');
+
+    if (signInBtn) {
+        signInBtn.addEventListener('click', async () => {
+            try {
+                signInBtn.textContent = 'Signing in...';
+                signInBtn.disabled = true;
+                await signIn();
+            } catch (e) {
+                console.error('Sign-in failed:', e);
+                showToast('Sign-in failed: ' + (e.message || 'Unknown error'), 'error');
+            } finally {
+                signInBtn.textContent = 'Sign in with Google';
+                signInBtn.disabled = false;
+            }
+        });
+    }
+
+    if (signOutBtn) {
+        signOutBtn.addEventListener('click', async () => {
+            await signOut();
+            showToast('Signed out from Google', 'info');
+        });
+    }
+
+    if (syncNowBtn) {
+        syncNowBtn.addEventListener('click', async () => {
+            if (!isSignedIn()) {
+                showToast('Please sign in with Google first', 'error');
+                return;
+            }
+            syncNowBtn.textContent = 'Syncing...';
+            syncNowBtn.disabled = true;
+            try {
+                await fullSync();
+                await renderReminders();
+                await renderNotes();
+                await renderHistory();
+                showToast('Synced successfully! ☁️', 'success');
+            } catch (e) {
+                showToast('Sync failed: ' + (e.message || 'Unknown error'), 'error');
+            } finally {
+                syncNowBtn.textContent = 'Sync Now';
+                syncNowBtn.disabled = false;
+                updateSyncTimeDisplay();
+            }
+        });
+    }
 
     // Apply loaded settings to form
     document.getElementById('settings-name').value = userName;
@@ -1711,6 +1788,114 @@ async function askAI(question) {
             </div>
         `;
         speak('Sorry, I had trouble with the local AI model.', settings.voice, settings.rate);
+    }
+}
+
+// ==========================================
+// Cloud Sync UI Helpers
+// ==========================================
+
+/**
+ * Called when Google auth state changes (sign-in / sign-out)
+ */
+function handleAuthStateChange(user) {
+    updateCloudUI(user);
+    if (user) {
+        showToast(`Signed in as ${user.name} ☁️`, 'success');
+        // Trigger initial sync
+        fullSync().then(() => {
+            renderReminders();
+            renderNotes();
+            renderHistory();
+        });
+    }
+}
+
+/**
+ * Called by drive.js when sync status changes
+ */
+function handleSyncStatusChange(status) {
+    const syncIcon = document.getElementById('sync-icon');
+    const syncText = document.getElementById('sync-status-text');
+    const cloudStatus = document.getElementById('cloud-sync-status');
+
+    if (!syncIcon || !syncText) return;
+
+    switch (status) {
+        case 'syncing':
+            syncIcon.classList.add('spinning');
+            syncText.textContent = 'Syncing...';
+            if (cloudStatus) cloudStatus.textContent = '🔄 Syncing...';
+            break;
+        case 'success':
+            syncIcon.classList.remove('spinning');
+            syncText.textContent = 'Synced ✓';
+            if (cloudStatus) cloudStatus.textContent = '✅ Synced';
+            updateSyncTimeDisplay();
+            break;
+        case 'error':
+            syncIcon.classList.remove('spinning');
+            syncText.textContent = 'Sync error';
+            if (cloudStatus) cloudStatus.textContent = '❌ Sync failed';
+            break;
+        case 'offline':
+            syncIcon.classList.remove('spinning');
+            syncText.textContent = 'Offline';
+            if (cloudStatus) cloudStatus.textContent = '📴 Offline';
+            break;
+        default:
+            syncIcon.classList.remove('spinning');
+            syncText.textContent = 'Idle';
+    }
+}
+
+/**
+ * Update all cloud-related UI elements based on auth state
+ */
+function updateCloudUI(user) {
+    const accountInfo = document.getElementById('cloud-account-info');
+    const authActions = document.getElementById('cloud-auth-actions');
+    const signedInSection = document.getElementById('cloud-signed-in-section');
+    const syncStatusText = document.getElementById('sync-status-text');
+    const userAvatar = document.getElementById('user-avatar');
+
+    if (user) {
+        // Signed in
+        if (accountInfo) {
+            accountInfo.innerHTML = `<strong>${escapeHtml(user.name)}</strong><br><span style="opacity:0.7;font-size:12px;">${escapeHtml(user.email)}</span>`;
+        }
+        if (authActions) authActions.classList.add('hidden');
+        if (signedInSection) signedInSection.classList.remove('hidden');
+        if (syncStatusText) syncStatusText.textContent = 'Connected';
+
+        // Update avatar with Google profile picture
+        if (userAvatar && user.picture) {
+            userAvatar.innerHTML = `<img src="${user.picture}" alt="${user.name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+        }
+
+        updateSyncTimeDisplay();
+    } else {
+        // Signed out
+        if (accountInfo) accountInfo.textContent = 'Not signed in';
+        if (authActions) authActions.classList.remove('hidden');
+        if (signedInSection) signedInSection.classList.add('hidden');
+        if (syncStatusText) syncStatusText.textContent = 'Not signed in';
+
+        // Reset avatar to letter
+        if (userAvatar) {
+            userAvatar.textContent = userName ? userName.charAt(0).toUpperCase() : '?';
+            userAvatar.title = userName || 'User';
+        }
+    }
+}
+
+/**
+ * Update the "Last Synced" display in settings
+ */
+function updateSyncTimeDisplay() {
+    const lastSyncEl = document.getElementById('cloud-last-sync');
+    if (lastSyncEl) {
+        lastSyncEl.textContent = getLastSyncTime();
     }
 }
 
