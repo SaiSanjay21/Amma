@@ -13,6 +13,11 @@ let isListening = false;
 let useNativeRecognition = false;
 let nativeSpeechPlugin = null;
 
+// Passive listening state
+let passiveRecognition = null;
+let isPassiveListening = false;
+let passiveOnReminder = null;  // callback when "remind me" wake phrase detected
+
 /**
  * Detect if we're running inside a Capacitor native app
  */
@@ -281,18 +286,19 @@ function extractTime(text) {
 }
 
 /**
- * Extract relative time ("in X minutes/hours") and return an absolute Date.
+ * Extract relative time ("in X minutes/hours" or "after X minutes/hours") and return an absolute Date.
+ * Supports: "in 30 minutes", "after 30 minutes", "in 2 hours", "after 2 hours", etc.
  */
 function extractRelativeTime(text, referenceDate) {
     const patterns = [
-        // "in 30 minutes", "in 2 hours"
-        /\bin\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i,
-        // "in half an hour"
-        /\bin\s+(?:half\s+an?\s+hour|30\s+min(?:ute)?s?)\b/i,
-        // "in an hour"
-        /\bin\s+an?\s+hour\b/i,
-        // "in a couple hours"
-        /\bin\s+a\s+couple\s+(?:of\s+)?hours?\b/i,
+        // "in 30 minutes", "in 2 hours", "after 30 minutes", "after 2 hours"
+        /\b(?:in|after)\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i,
+        // "in half an hour", "after half an hour"
+        /\b(?:in|after)\s+(?:half\s+an?\s+hour|30\s+min(?:ute)?s?)\b/i,
+        // "in an hour", "after an hour"
+        /\b(?:in|after)\s+an?\s+hour\b/i,
+        // "in a couple hours", "after a couple hours"
+        /\b(?:in|after)\s+a\s+couple\s+(?:of\s+)?hours?\b/i,
     ];
 
     let match = text.match(patterns[0]);
@@ -629,7 +635,7 @@ export function parseVoiceCommand(transcript) {
 
     // ---- Step 9: Clean up title ----
     taskText = taskText
-        .replace(/\b(at|by|around|for|on|in|the|every|each|to|and|then|also|please|can you|morning|afternoon|evening|night|this|next|due|before|until|set|remind|me|reminder|alarm|timer|remember|don't|forget|wake|up|alert|notify|an?|about|that)\b/gi, ' ')
+        .replace(/\b(at|by|around|for|on|in|after|the|every|each|to|and|then|also|please|can you|morning|afternoon|evening|night|this|next|due|before|until|set|remind|me|reminder|alarm|timer|remember|don't|forget|wake|up|alert|notify|an?|about|that)\b/gi, ' ')
         .replace(/\d{1,2}:\d{2}/g, '')          // remove leftover time digits like "5:05"
         .replace(/\d{1,2}\s*(am|pm)/gi, '')     // remove leftover "5 am"
         .replace(/\s+/g, ' ')
@@ -659,4 +665,213 @@ export function parseVoiceCommand(transcript) {
 
 function formatDate(date) {
     return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+}
+
+// ==========================================
+// Passive Continuous Listening Mode
+// ==========================================
+// Listens in the background using Web Speech API.
+// When the user says something starting with "Remind me about...",
+// the full transcript is captured and forwarded to the app.
+// On native Android, we re-invoke the speech recognizer in a loop.
+
+/**
+ * Start passive (always-on) listening.
+ * @param {Function} onReminder - callback(transcript) when a "remind me" phrase is detected
+ * @param {Function} onStatusChange - callback(status) for UI updates: 'listening', 'processing', 'paused', 'error'
+ */
+export function initPassiveListening(onReminder, onStatusChange) {
+    passiveOnReminder = onReminder;
+
+    // --- Native Android: loop-start speech recognition ---
+    if (useNativeRecognition && nativeSpeechPlugin) {
+        startNativePassiveLoop(onStatusChange);
+        return;
+    }
+
+    // --- Web browser: continuous Web Speech API ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        console.warn('❌ Passive listening not available (no Web Speech API)');
+        onStatusChange?.('error');
+        return;
+    }
+
+    passiveRecognition = new SpeechRecognition();
+    passiveRecognition.continuous = true;
+    passiveRecognition.interimResults = true;
+    passiveRecognition.lang = 'en-US';
+    passiveRecognition.maxAlternatives = 1;
+
+    let accumulatedTranscript = '';
+    let wakeDetected = false;
+
+    passiveRecognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript;
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+
+        // Check interim + final for wake phrase
+        const fullText = (accumulatedTranscript + ' ' + finalTranscript + ' ' + interimTranscript).toLowerCase();
+
+        if (!wakeDetected && isWakePhrase(fullText)) {
+            wakeDetected = true;
+            onStatusChange?.('processing');
+        }
+
+        if (finalTranscript) {
+            accumulatedTranscript += ' ' + finalTranscript;
+        }
+
+        // If wake phrase was detected and we got a final transcript,
+        // wait a bit for the user to finish speaking, then fire callback
+        if (wakeDetected && finalTranscript) {
+            // The user has finished a sentence chunk. We'll capture everything.
+            const cleaned = accumulatedTranscript.trim();
+            if (cleaned.length > 5) {
+                // Small delay to see if user keeps speaking
+                setTimeout(() => {
+                    if (accumulatedTranscript.trim() === cleaned) {
+                        // User stopped — fire callback with full transcript
+                        passiveOnReminder?.(cleaned);
+                        // Reset state
+                        accumulatedTranscript = '';
+                        wakeDetected = false;
+                        onStatusChange?.('listening');
+                    }
+                }, 1500);
+            }
+        }
+    };
+
+    passiveRecognition.onend = () => {
+        // Auto-restart if passive mode is still active
+        if (isPassiveListening) {
+            try {
+                setTimeout(() => {
+                    if (isPassiveListening && passiveRecognition) {
+                        passiveRecognition.start();
+                    }
+                }, 300);
+            } catch (e) {
+                console.warn('Passive restart failed:', e);
+            }
+        }
+    };
+
+    passiveRecognition.onerror = (event) => {
+        console.warn('Passive listening error:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            isPassiveListening = false;
+            onStatusChange?.('error');
+            return;
+        }
+        // For transient errors (no-speech, network, etc.), auto-restart
+        if (isPassiveListening) {
+            setTimeout(() => {
+                if (isPassiveListening && passiveRecognition) {
+                    try { passiveRecognition.start(); } catch (e) { /* ignore */ }
+                }
+            }, 1000);
+        }
+    };
+
+    try {
+        isPassiveListening = true;
+        passiveRecognition.start();
+        onStatusChange?.('listening');
+        console.log('🎧 Passive listening started (Web Speech API)');
+    } catch (e) {
+        console.error('Failed to start passive listening:', e);
+        isPassiveListening = false;
+        onStatusChange?.('error');
+    }
+}
+
+/**
+ * Native Android passive loop — re-invokes speech recognition repeatedly
+ */
+async function startNativePassiveLoop(onStatusChange) {
+    isPassiveListening = true;
+    onStatusChange?.('listening');
+    console.log('🎧 Passive listening started (Native Android loop)');
+
+    while (isPassiveListening) {
+        try {
+            const result = await nativeSpeechPlugin.start({
+                language: 'en-US',
+                maxResults: 1,
+                prompt: '',
+                partialResults: false,
+                popup: false,  // No UI popup — silent background listening
+            });
+
+            if (result && result.matches && result.matches.length > 0) {
+                const transcript = result.matches[0];
+                if (isWakePhrase(transcript.toLowerCase())) {
+                    onStatusChange?.('processing');
+                    passiveOnReminder?.(transcript);
+                    onStatusChange?.('listening');
+                }
+                // If not a wake phrase, just ignore and loop again
+            }
+        } catch (err) {
+            // Speech recognition cancelled or timed out — just restart
+            console.warn('Native passive loop error (restarting):', err.message || err);
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
+
+    onStatusChange?.('paused');
+}
+
+/**
+ * Stop passive listening
+ */
+export function stopPassiveListening() {
+    isPassiveListening = false;
+
+    if (passiveRecognition) {
+        try { passiveRecognition.stop(); } catch (e) { /* ignore */ }
+        passiveRecognition = null;
+    }
+
+    if (useNativeRecognition && nativeSpeechPlugin) {
+        try { nativeSpeechPlugin.stop(); } catch (e) { /* ignore */ }
+    }
+
+    console.log('🔇 Passive listening stopped');
+}
+
+/**
+ * Check if the text contains a "remind me" wake phrase
+ */
+function isWakePhrase(text) {
+    const wakePatterns = [
+        /remind\s+me\s+(about|to|that)/i,
+        /remind\s+me/i,
+        /set\s+(an?\s+)?(?:alarm|reminder|timer)/i,
+        /remember\s+to/i,
+        /don'?t\s+forget/i,
+        /i\s+have\s+to/i,
+        /i\s+need\s+to/i,
+        /note\s+(that|this|down)/i,
+        /save\s+(this|a)\s+note/i,
+    ];
+    return wakePatterns.some(p => p.test(text));
+}
+
+/**
+ * Get passive listening status
+ */
+export function getIsPassiveListening() {
+    return isPassiveListening;
 }

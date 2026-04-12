@@ -6,7 +6,7 @@
 import './style.css';
 import { openDB, addItem, getAllItems, deleteItem, getSetting, setSetting, exportAllData, importAllData, deleteAllData, setSyncCallback } from './db.js';
 import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNotificationSound } from './audio.js';
-import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition } from './voice.js';
+import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition, initPassiveListening, stopPassiveListening, getIsPassiveListening } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
 import { registerPlugin } from '@capacitor/core';
 import { initAuth, signIn, signOut, isSignedIn, getUserInfo } from './auth.js';
@@ -90,12 +90,15 @@ async function init() {
         settings.speakReminders = await getSetting('speakReminders', true);
         settings.aiServerUrl = await getSetting('aiServerUrl', '');
 
-        // Show onboarding if no name set
+        // Show onboarding if no name set, or prompt Google sign-in for returning users
         if (!userName) {
             showOnboarding();
         } else {
             document.getElementById('onboarding-modal').classList.add('hidden');
             updateUserAvatar();
+
+            // If returning user isn't signed in to Google, nudge them
+            // (checked after auth init completes below)
         }
 
         // Initialize UI
@@ -140,7 +143,23 @@ async function init() {
                 renderReminders();
                 renderNotes();
             });
+        } else if (userName) {
+            // Returning user not signed in — show Google Sign-In prompt
+            // Give a small delay so the app feels settled
+            setTimeout(() => {
+                showGoogleSignInPrompt();
+            }, 3000);
         }
+
+        // Auto-provision the local AI model (downloads automatically on first launch)
+        // Runs in background — doesn't block the app
+        autoProvisionLLM();
+
+        // Start passive listening (auto-listen for "Remind me" wake phrase)
+        // Small delay to ensure everything is initialized and permissions are ready
+        setTimeout(() => {
+            startPassiveListeningMode();
+        }, 2000);
 
         console.log('🚀 RemindMe AI initialized');
     } catch (error) {
@@ -250,11 +269,14 @@ function hideInstallBanner() {
 // ==========================================
 function showOnboarding() {
     const modal = document.getElementById('onboarding-modal');
+    const step1 = document.getElementById('onboarding-step-1');
+    const step2 = document.getElementById('onboarding-step-2');
     modal.classList.remove('hidden');
 
     const input = document.getElementById('user-name-input');
     const submitBtn = document.getElementById('onboarding-submit');
 
+    // Step 1: Name entry → Continue to Step 2
     submitBtn.addEventListener('click', async () => {
         const name = input.value.trim();
         if (!name) {
@@ -265,16 +287,54 @@ function showOnboarding() {
 
         userName = name;
         await setSetting('userName', name);
-        modal.classList.add('hidden');
         updateUserAvatar();
 
-        // Welcome message
-        playNotificationSound();
-        speak(`Welcome to RemindMe AI, ${userName}! I'm your personal reminder assistant. You can talk to me anytime by clicking the microphone button.`, settings.voice, settings.rate);
+        // Transition to Step 2: Google Sign-In
+        step1.classList.add('hidden');
+        step2.classList.remove('hidden');
     });
 
     input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') submitBtn.click();
+    });
+
+    // Step 2: Google Sign-In
+    const googleSignInBtn = document.getElementById('onboarding-google-signin');
+    const skipBtn = document.getElementById('onboarding-skip-signin');
+
+    googleSignInBtn.addEventListener('click', async () => {
+        googleSignInBtn.disabled = true;
+        googleSignInBtn.innerHTML = '<span>Connecting...</span>';
+
+        try {
+            await signIn();
+            // signIn triggers handleAuthStateChange which does the sync
+            modal.classList.add('hidden');
+            playNotificationSound();
+            speak(`Welcome to RemindMe AI, ${userName}! Your Google account is connected and your data will sync automatically.`, settings.voice, settings.rate);
+            showToast(`Welcome, ${userName}! ☁️ Cloud sync active`, 'success');
+        } catch (err) {
+            console.error('Onboarding sign-in failed:', err);
+            googleSignInBtn.disabled = false;
+            googleSignInBtn.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 48 48">
+                  <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
+                  <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/>
+                  <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/>
+                  <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/>
+                </svg>
+                <span>Try Again</span>
+            `;
+            showToast('Sign-in failed. Please try again.', 'error');
+        }
+    });
+
+    // Skip Sign-In (allow usage without sync)
+    skipBtn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        playNotificationSound();
+        speak(`Welcome to RemindMe AI, ${userName}! You can connect your Google account later in Settings to sync your data.`, settings.voice, settings.rate);
+        showToast(`Welcome, ${userName}! Connect Google later in Settings to sync.`, 'info');
     });
 }
 
@@ -286,6 +346,45 @@ function updateUserAvatar() {
     // Update settings name field
     const settingsName = document.getElementById('settings-name');
     if (settingsName) settingsName.value = userName;
+}
+
+/**
+ * Show Google Sign-In prompt for returning users who haven't connected Google.
+ * Uses onboarding Step 2 but with a slightly different tone.
+ */
+function showGoogleSignInPrompt() {
+    // Don't show if already signed in or if onboarding is active
+    if (isSignedIn()) return;
+
+    const dismissed = localStorage.getItem('remindme_signin_dismissed');
+    if (dismissed) {
+        // Only show once per day
+        const lastDismissed = parseInt(dismissed);
+        if (Date.now() - lastDismissed < 24 * 60 * 60 * 1000) return;
+    }
+
+    const modal = document.getElementById('onboarding-modal');
+    const step1 = document.getElementById('onboarding-step-1');
+    const step2 = document.getElementById('onboarding-step-2');
+
+    // Show Step 2 directly (skip name since we already have it)
+    step1.classList.add('hidden');
+    step2.classList.remove('hidden');
+    modal.classList.remove('hidden');
+
+    // Wire up Skip button to dismiss with cooldown
+    const skipBtn = document.getElementById('onboarding-skip-signin');
+    const existingSkipHandler = skipBtn._signInHandler;
+    if (existingSkipHandler) {
+        skipBtn.removeEventListener('click', existingSkipHandler);
+    }
+
+    const skipHandler = () => {
+        modal.classList.add('hidden');
+        localStorage.setItem('remindme_signin_dismissed', Date.now().toString());
+    };
+    skipBtn._signInHandler = skipHandler;
+    skipBtn.addEventListener('click', skipHandler);
 }
 
 // ==========================================
@@ -499,6 +598,206 @@ function initVoice() {
         voiceBtn.classList.remove('active');
         voiceOverlay.classList.add('hidden');
     });
+
+    // Add passive listening status indicator to the header
+    addPassiveListeningIndicator();
+}
+
+// ==========================================
+// Passive Listening Mode (Auto-detect "Remind me")
+// ==========================================
+function startPassiveListeningMode() {
+    // Stop manual listening if active
+    stopListening();
+
+    initPassiveListening(
+        // onReminder — triggered when a wake phrase is detected
+        async (transcript) => {
+            console.log('🎧 Passive voice captured:', transcript);
+
+            // Parse the command
+            const parsed = parseVoiceCommand(transcript);
+
+            if (parsed.isReminder) {
+                // ---- Reminder detected: create reminder ----
+                const title = parsed.title || 'Reminder';
+                const message = parsed.message || generateReminderMessage(title);
+
+                const reminder = {
+                    id: `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    title: title,
+                    message: message,
+                    date: parsed.date,
+                    time: parsed.time,
+                    datetime: `${parsed.date}T${parsed.time}`,
+                    recurrence: parsed.recurrence,
+                    priority: parsed.priority || 'medium',
+                    completed: false,
+                    createdAt: new Date().toISOString(),
+                    source: 'voice-passive',
+                };
+
+                await addItem('reminders', reminder);
+
+                // Also save as note if date/time present but no explicit keyword
+                if (parsed.hasDateTime && !isExplicitReminderKeyword(transcript)) {
+                    const note = {
+                        id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        title: title,
+                        content: transcript,
+                        color: 'default',
+                        hasReminder: true,
+                        reminderDate: parsed.date,
+                        reminderTime: parsed.time,
+                        reminderRecurrence: parsed.recurrence,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    };
+                    await addItem('notes', note);
+                    await renderNotes();
+                }
+
+                await renderReminders();
+                switchView('reminders');
+
+                playNotificationSound();
+                const timeStr = formatTimeDisplay(parsed.time);
+                const dateStr = formatDateDisplay(parsed.date);
+                const recStr = parsed.recurrence !== 'none' ? `, ${parsed.recurrence}` : '';
+                const confirmMsg = `Got it, ${userName}! I'll remind you about ${title} on ${dateStr} at ${timeStr}${recStr}.`;
+                speak(confirmMsg, settings.voice, settings.rate);
+                showToast(`Reminder set for ${dateStr} at ${timeStr} 🎤`, 'success');
+            } else {
+                // ---- Non-reminder: save as plain note ----
+                const note = {
+                    id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    title: parsed.title || 'Voice Note',
+                    content: transcript,
+                    color: 'default',
+                    hasReminder: false,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                };
+
+                await addItem('notes', note);
+                await renderNotes();
+                switchView('notes');
+
+                playNotificationSound();
+                speak(`I saved that as a note for you, ${userName}.`, settings.voice, settings.rate);
+                showToast('Saved as a voice note! 📝', 'info');
+            }
+        },
+        // onStatusChange — update UI indicator
+        (status) => {
+            updatePassiveListeningUI(status);
+        }
+    );
+}
+
+function addPassiveListeningIndicator() {
+    const header = document.querySelector('.header');
+    if (!header) return;
+
+    // Create indicator element
+    let indicator = document.getElementById('passive-listening-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'passive-listening-indicator';
+        indicator.innerHTML = `
+            <div class="passive-indicator-dot"></div>
+            <span class="passive-indicator-text">Listening...</span>
+        `;
+        indicator.title = 'Auto-listening for "Remind me..." commands';
+
+        // Style the indicator
+        Object.assign(indicator.style, {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 12px',
+            borderRadius: '20px',
+            background: 'rgba(108, 92, 231, 0.15)',
+            fontSize: '12px',
+            fontWeight: '600',
+            color: 'var(--primary)',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            marginLeft: '8px',
+        });
+
+        // Toggle passive listening on click
+        indicator.addEventListener('click', () => {
+            if (getIsPassiveListening()) {
+                stopPassiveListening();
+                updatePassiveListeningUI('paused');
+            } else {
+                startPassiveListeningMode();
+            }
+        });
+
+        // Insert after the page title or at end of header
+        const pageTitle = header.querySelector('#page-title');
+        if (pageTitle && pageTitle.parentNode) {
+            pageTitle.parentNode.insertBefore(indicator, pageTitle.nextSibling);
+        } else {
+            header.appendChild(indicator);
+        }
+    }
+}
+
+function updatePassiveListeningUI(status) {
+    const indicator = document.getElementById('passive-listening-indicator');
+    if (!indicator) return;
+
+    const dot = indicator.querySelector('.passive-indicator-dot');
+    const text = indicator.querySelector('.passive-indicator-text');
+
+    if (!dot || !text) return;
+
+    // Reset dot styles
+    dot.style.width = '8px';
+    dot.style.height = '8px';
+    dot.style.borderRadius = '50%';
+    dot.style.transition = 'all 0.3s ease';
+
+    switch (status) {
+        case 'listening':
+            dot.style.background = '#00b894';
+            dot.style.boxShadow = '0 0 8px rgba(0, 184, 148, 0.6)';
+            dot.style.animation = 'pulse 2s infinite';
+            text.textContent = 'Listening...';
+            indicator.style.background = 'rgba(0, 184, 148, 0.15)';
+            indicator.style.color = '#00b894';
+            indicator.title = 'Auto-listening active. Say "Remind me..." to create a reminder. Click to pause.';
+            break;
+        case 'processing':
+            dot.style.background = '#fdcb6e';
+            dot.style.boxShadow = '0 0 12px rgba(253, 203, 110, 0.8)';
+            dot.style.animation = 'pulse 0.5s infinite';
+            text.textContent = 'Capturing...';
+            indicator.style.background = 'rgba(253, 203, 110, 0.15)';
+            indicator.style.color = '#fdcb6e';
+            break;
+        case 'paused':
+            dot.style.background = '#636e72';
+            dot.style.boxShadow = 'none';
+            dot.style.animation = 'none';
+            text.textContent = 'Paused';
+            indicator.style.background = 'rgba(99, 110, 114, 0.15)';
+            indicator.style.color = '#636e72';
+            indicator.title = 'Auto-listening paused. Click to resume.';
+            break;
+        case 'error':
+            dot.style.background = '#ff7675';
+            dot.style.boxShadow = 'none';
+            dot.style.animation = 'none';
+            text.textContent = 'Mic Error';
+            indicator.style.background = 'rgba(255, 118, 117, 0.15)';
+            indicator.style.color = '#ff7675';
+            indicator.title = 'Microphone access denied or not supported.';
+            break;
+    }
 }
 
 function generateReminderMessage(title) {
@@ -1191,7 +1490,7 @@ function initSettings() {
         await setSetting('speakReminders', settings.speakReminders);
     });
 
-    // Local AI Model Setup
+    // Local AI Model Setup (Auto-provisioned)
     const modelStatusEl = document.getElementById('ai-model-status');
     const downloadBtn = document.getElementById('btn-settings-download');
     const installBtn = document.getElementById('btn-settings-install');
@@ -1201,11 +1500,16 @@ function initSettings() {
         try {
             LlmPlugin.checkModel().then(res => {
                 if (res.exists) {
-                    modelStatusEl.textContent = '✅ Model installed and ready!';
+                    modelStatusEl.textContent = `✅ AI Model ready (${res.sizeMB || '?'} MB on disk, ≤500 MB RAM)`;
                     modelStatusEl.style.color = '#00b894';
+                    // Hide download button since model exists
+                    if (downloadBtn) downloadBtn.textContent = 'Re-download Model';
+                } else if (isAutoProvisioning) {
+                    modelStatusEl.textContent = '📥 Downloading AI model in background...';
+                    modelStatusEl.style.color = '#fdcb6e';
                 } else {
-                    modelStatusEl.textContent = '❌ Model not found. Follow steps below.';
-                    modelStatusEl.style.color = '#ff7675';
+                    modelStatusEl.textContent = '⏳ AI Model will auto-download when connected to WiFi';
+                    modelStatusEl.style.color = '#fdcb6e';
                 }
             }).catch(() => {
                 modelStatusEl.textContent = '⚠️ Could not check (plugin error)';
@@ -1220,21 +1524,56 @@ function initSettings() {
         modelStatusEl.style.color = '#fdcb6e';
     }
 
-    // Download button
+    // Re-download / Force-download button
     if (downloadBtn) {
-        downloadBtn.addEventListener('click', () => {
-            if (window.Capacitor && Capacitor.isNativePlatform()) {
-                LlmPlugin.downloadModel({
-                    url: 'https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4'
+        downloadBtn.textContent = 'Download AI Model';
+        downloadBtn.addEventListener('click', async () => {
+            if (!window.Capacitor || !Capacitor.isNativePlatform()) {
+                showToast('Only available on Android device', 'error');
+                return;
+            }
+
+            downloadBtn.textContent = 'Downloading...';
+            downloadBtn.disabled = true;
+            if (modelStatusEl) {
+                modelStatusEl.textContent = '📥 Downloading AI Model...';
+                modelStatusEl.style.color = '#fdcb6e';
+            }
+
+            try {
+                // Listen for progress
+                const listener = await LlmPlugin.addListener('modelDownloadProgress', (data) => {
+                    if (modelStatusEl) {
+                        modelStatusEl.textContent = `📥 Downloading... ${data.percent}% (${data.downloadedMB}/${data.totalMB} MB)`;
+                    }
                 });
-                showToast('Opening Kaggle in browser...', 'info');
-            } else {
-                window.open('https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4', '_blank');
+
+                const result = await LlmPlugin.autoProvisionModel({});
+                if (listener && listener.remove) listener.remove();
+
+                if (result.status === 'downloaded' || result.status === 'already_exists') {
+                    showToast('✅ AI Model ready!', 'success');
+                    if (modelStatusEl) {
+                        modelStatusEl.textContent = `✅ AI Model ready (${result.sizeMB || '?'} MB, ≤500 MB RAM)`;
+                        modelStatusEl.style.color = '#00b894';
+                    }
+                    isModelLoaded = false; // Reset so next askAI reloads with new model
+                }
+            } catch (e) {
+                console.error('Download error:', e);
+                showToast('❌ Download failed: ' + (e.message || 'Unknown error'), 'error');
+                if (modelStatusEl) {
+                    modelStatusEl.textContent = '❌ Download failed — check internet connection';
+                    modelStatusEl.style.color = '#ff7675';
+                }
+            } finally {
+                downloadBtn.textContent = 'Re-download Model';
+                downloadBtn.disabled = false;
             }
         });
     }
 
-    // Install button
+    // Install button (legacy — install from Downloads folder)
     if (installBtn) {
         installBtn.addEventListener('click', async () => {
             if (!window.Capacitor || !Capacitor.isNativePlatform()) {
@@ -1248,29 +1587,17 @@ function initSettings() {
             try {
                 const res = await LlmPlugin.installModel();
                 if (res.status === 'installed') {
-                    showToast('✅ Model installed successfully! Source: ' + res.source, 'success');
+                    showToast('✅ Model installed successfully!', 'success');
                     if (modelStatusEl) {
-                        modelStatusEl.textContent = '✅ Model installed and ready!';
+                        modelStatusEl.textContent = '✅ AI Model installed and ready!';
                         modelStatusEl.style.color = '#00b894';
                     }
-                    isModelLoaded = false; // Reset so next askAI reloads
+                    isModelLoaded = false;
                 }
             } catch (e) {
-                console.error('Install error:', e);
-                const msg = e.message || 'Install failed';
-                let suggestion = '';
-
-                if (msg.includes('Permission') || msg.includes('EACCES')) {
-                    suggestion = '<br><br><b>Permisson Error?</b> Try ADB:<br><code>adb push gemma-2b-it-gpu-int4.bin /sdcard/Android/data/com.remindme.ai/files/</code>';
-                }
-
-                showToast('❌ ' + msg, 'error');
-                if (modelStatusEl) {
-                    modelStatusEl.innerHTML = `❌ ${msg}${suggestion}`;
-                    modelStatusEl.style.color = '#ff7675';
-                }
+                showToast('❌ ' + (e.message || 'Install failed'), 'error');
             } finally {
-                installBtn.textContent = 'Install';
+                installBtn.textContent = 'Install from Downloads';
                 installBtn.disabled = false;
             }
         });
@@ -1579,6 +1906,91 @@ function escapeHtml(text) {
 // AI Assistant Logic (Local LLM)
 // ==========================================
 let isModelLoaded = false;
+let isAutoProvisioning = false;
+
+/**
+ * Auto-provision the LLM model on first launch.
+ * Downloads the model file (~1.1 GB) in the background from a hosted URL.
+ * The model is configured to use ≤ 0.5 GB RAM (maxTokens=256).
+ */
+async function autoProvisionLLM() {
+    // Only on native Android
+    if (!window.Capacitor || !Capacitor.isNativePlatform()) {
+        console.log('⏭ LLM auto-provision skipped (not native)');
+        return;
+    }
+
+    try {
+        // Check if model already exists
+        const check = await LlmPlugin.checkModel();
+        if (check.exists) {
+            console.log('✅ LLM model already present (' + (check.sizeMB || '?') + ' MB)');
+            updateModelStatusUI('ready', 'AI Model Ready ✅');
+            return;
+        }
+
+        // Model not found — start auto-download
+        console.log('📥 Starting auto-provision of LLM model...');
+        isAutoProvisioning = true;
+        updateModelStatusUI('downloading', 'Downloading AI Model (0%)...');
+
+        // Listen for progress events
+        const progressListener = await LlmPlugin.addListener('modelDownloadProgress', (data) => {
+            const percent = data.percent || 0;
+            const downloadedMB = data.downloadedMB || 0;
+            const totalMB = data.totalMB || 0;
+            updateModelStatusUI('downloading', `Downloading AI Model... ${percent}% (${downloadedMB}/${totalMB} MB)`);
+        });
+
+        // Trigger auto-download
+        const result = await LlmPlugin.autoProvisionModel({});
+
+        // Cleanup listener
+        if (progressListener && progressListener.remove) {
+            progressListener.remove();
+        }
+
+        isAutoProvisioning = false;
+
+        if (result.status === 'already_exists') {
+            console.log('✅ Model already exists at: ' + result.path);
+            updateModelStatusUI('ready', 'AI Model Ready ✅');
+        } else if (result.status === 'downloaded') {
+            console.log('✅ Model auto-downloaded: ' + result.path + ' (' + result.sizeMB + ' MB)');
+            updateModelStatusUI('ready', 'AI Model Downloaded ✅');
+            showToast('AI Model downloaded and ready! 🧠', 'success');
+        }
+    } catch (err) {
+        isAutoProvisioning = false;
+        console.warn('⚠️ LLM auto-provision failed:', err.message || err);
+        updateModelStatusUI('error', 'AI Download Failed — will retry');
+        // Don't show an error toast — the app works fine without AI.
+        // It will retry on next launch or when user tries to ask AI.
+    }
+}
+
+/**
+ * Update the AI model status in the settings UI and header.
+ */
+function updateModelStatusUI(status, message) {
+    const modelStatusEl = document.getElementById('ai-model-status');
+    if (!modelStatusEl) return;
+
+    modelStatusEl.textContent = message;
+    switch (status) {
+        case 'ready':
+            modelStatusEl.style.color = '#00b894';
+            break;
+        case 'downloading':
+            modelStatusEl.style.color = '#fdcb6e';
+            break;
+        case 'error':
+            modelStatusEl.style.color = '#ff7675';
+            break;
+        default:
+            modelStatusEl.style.color = '#636e72';
+    }
+}
 
 async function askAI(question) {
     // Show Overlay
@@ -1620,69 +2032,81 @@ async function askAI(question) {
     newCloseBtnBottom.addEventListener('click', closeOverlay);
 
     try {
-        // Step 0: Check if Model Exists
+        // Step 0: Check if Model Exists — auto-download if missing
         if (!isModelLoaded) {
             const check = await LlmPlugin.checkModel();
             if (!check.exists) {
+                // Model missing — auto-download it
                 answerEl.innerHTML = `
                     <div style="text-align: center; padding: 20px;">
-                        <h3>⚠️ AI Model Missing</h3>
-                        <p>To use offline AI, you need to download the <b>Gemma 2B</b> model once (1.3 GB).</p>
-                        
-                        <button id="btn-download" style="background: #6C5CE7; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0;">
-                            1. Download from Kaggle
-                        </button>
-                        
-                        <p style="font-size: 12px; opacity: 0.7;">(Login to Kaggle, tap 'Download', save to Downloads folder)</p>
-
-                        <button id="btn-install" style="background: #00b894; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0;">
-                            2. Install from Downloads
-                        </button>
-                        
-                        <div id="install-status" style="font-size: 12px; margin-top: 10px;"></div>
+                        <h3>🧠 Setting Up AI</h3>
+                        <p>Downloading the AI model for the first time. This happens only once and works offline afterwards.</p>
+                        <p style="font-size: 14px; opacity: 0.9;">Model size: ~1.1 GB • RAM usage: ≤ 0.5 GB</p>
+                        <div id="ai-download-progress" style="margin: 20px 0;">
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 8px; height: 8px; overflow: hidden;">
+                                <div id="ai-download-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6C5CE7, #a29bfe); border-radius: 8px; transition: width 0.3s ease;"></div>
+                            </div>
+                            <p id="ai-download-text" style="font-size: 12px; margin-top: 8px; opacity: 0.7;">Starting download...</p>
+                        </div>
+                        <button id="ai-download-cancel" style="background: rgba(255,255,255,0.1); color: white; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; font-size: 13px;">Cancel</button>
                     </div>
                 `;
 
-                document.getElementById('btn-download').onclick = () => {
-                    LlmPlugin.downloadModel({
-                        url: 'https://www.kaggle.com/models/google/gemma/frameworks/mediapipe/variations/gemma-2b-it-gpu-int4'
-                    });
-                };
+                document.getElementById('ai-download-cancel').addEventListener('click', closeOverlay);
 
-                document.getElementById('btn-install').onclick = async () => {
-                    const statusEl = document.getElementById('install-status');
-                    statusEl.textContent = 'Scanning Downloads folder...';
-                    statusEl.style.color = '#fdcb6e';
+                // Start the download
+                const progressListener = await LlmPlugin.addListener('modelDownloadProgress', (data) => {
+                    const bar = document.getElementById('ai-download-bar');
+                    const text = document.getElementById('ai-download-text');
+                    if (bar) bar.style.width = data.percent + '%';
+                    if (text) text.textContent = `${data.percent}% — ${data.downloadedMB}/${data.totalMB} MB`;
+                });
 
-                    try {
-                        const res = await LlmPlugin.installModel();
-                        if (res.status === 'installed') {
-                            statusEl.textContent = '✅ Model Installed! Initializing...';
-                            statusEl.style.color = '#00b894';
-                            setTimeout(() => askAI(question), 1000); // Retry
-                        }
-                    } catch (e) {
-                        statusEl.textContent = '❌ Error: ' + e.message;
-                        statusEl.style.color = '#ff7675';
+                try {
+                    const result = await LlmPlugin.autoProvisionModel({});
+                    if (progressListener && progressListener.remove) progressListener.remove();
+
+                    if (result.status === 'downloaded' || result.status === 'already_exists') {
+                        answerEl.innerHTML = `
+                            <div class="ai-loading">
+                                <div class="ai-dot"></div>
+                                <div class="ai-dot"></div>
+                                <div class="ai-dot"></div>
+                            </div>
+                            <span>Model downloaded! Loading AI engine...</span>
+                        `;
+                        // Continue to load the model below
                     }
-                };
-                return; // Stop here
+                } catch (downloadErr) {
+                    if (progressListener && progressListener.remove) progressListener.remove();
+                    answerEl.innerHTML = `
+                        <div style="text-align: center; padding: 20px;">
+                            <h3>⚠️ Download Failed</h3>
+                            <p>${downloadErr.message || 'Network error'}</p>
+                            <p style="font-size: 12px; opacity: 0.7;">Check your internet connection and try again. The download will resume where it left off.</p>
+                            <button id="ai-retry" style="background: #6C5CE7; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0; cursor: pointer;">Retry</button>
+                        </div>
+                    `;
+                    document.getElementById('ai-retry').addEventListener('click', () => askAI(question));
+                    return;
+                }
             }
 
-            // If exists, load it
-            console.log('Loading local model...');
+            // If exists, load it with memory-optimized settings (≤ 0.5 GB RAM)
+            console.log('Loading local model (memory budget: ≤0.5 GB)...');
             answerEl.innerHTML = `
                 <div class="ai-loading">
                     <div class="ai-dot"></div>
                     <div class="ai-dot"></div>
                     <div class="ai-dot"></div>
                 </div>
-                <span>Initializing AI Engine... (One-time)</span>
+                <span>Initializing AI Engine... (One-time, ≤0.5 GB RAM)</span>
             `;
 
             const loadRes = await LlmPlugin.loadModel();
             if (loadRes.status === 'loaded' || loadRes.status === 'already_loaded') {
                 isModelLoaded = true;
+                console.log('✅ Model loaded. Max tokens:', loadRes.maxTokens, '| RAM budget:', loadRes.memoryBudgetMB, 'MB');
             } else {
                 throw new Error('Failed to load model: ' + JSON.stringify(loadRes));
             }
@@ -1716,7 +2140,7 @@ async function askAI(question) {
 
         // Filter Reminders (Active + Relevant)
         const relevantReminders = allReminders
-            .filter(r => !r.completed) // Always include active reminders? No, only relevant ones unless user asks "what are my reminders"
+            .filter(r => !r.completed)
             .map(r => ({ ...r, score: scoreItem(r.title + ' ' + r.message) }))
             .filter(r => r.score > 0 || question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))
             .sort((a, b) => b.score - a.score)
@@ -1737,7 +2161,6 @@ async function askAI(question) {
                 `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`
             ).join("\n") + "\n";
         } else if (allReminders.filter(r => !r.completed).length > 0 && (question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))) {
-            // Fallback: If asking about reminders but no keywords matched specific ones, show upcoming
             const upcoming = allReminders.filter(r => !r.completed).slice(0, 5);
             contextString += "Upcoming Reminders:\n" + upcoming.map(r => `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`).join("\n") + "\n";
         } else {
@@ -1772,7 +2195,6 @@ async function askAI(question) {
                 stopSpeaking();
                 speak(answer, settings.voice, settings.rate);
             });
-            // (No background consolidation, just pure RAG)
 
         } else {
             throw new Error('Empty response from AI');
@@ -1784,7 +2206,7 @@ async function askAI(question) {
             <div style="color: #ff6b6b">
                 <strong>Error:</strong> ${err.message || 'Unknown error'}
                 <br><br>
-                <small>Did you copy <code>gemma-2b-it-gpu-int4.bin</code> to assets?</small>
+                <small>The AI model will auto-download when connected to the internet. Please check your connection and try again.</small>
             </div>
         `;
         speak('Sorry, I had trouble with the local AI model.', settings.voice, settings.rate);
