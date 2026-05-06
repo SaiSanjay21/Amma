@@ -31,6 +31,11 @@ const config: CapacitorConfig = {
       iconColor: '#6C5CE7',
       sound: 'notification.wav',
     },
+    SocialLogin: {
+      google: {
+        webClientId: '268608325920-0ungraf36u5kfdmr837mvgkj6npqcdhu.apps.googleusercontent.com',
+      },
+    },
   },
   server: {
     androidScheme: 'https',

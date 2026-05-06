@@ -325,7 +325,15 @@ function showOnboarding() {
                 </svg>
                 <span>Try Again</span>
             `;
-            showToast('Sign-in failed. Please try again.', 'error');
+
+            const errMsg = err.message || String(err);
+            if (errMsg.includes('plugin not loaded') || errMsg.includes('google-services.json') || errMsg.includes('not initialized')) {
+                showToast('Google Sign-In not configured. Set up Firebase credentials first — see setup guide.', 'error');
+            } else if (errMsg.includes('canceled') || errMsg.includes('cancelled') || errMsg.includes('12501')) {
+                showToast('Sign-in cancelled. Tap the button to try again.', 'info');
+            } else {
+                showToast('Sign-in failed: ' + errMsg, 'error');
+            }
         }
     });
 
@@ -1489,119 +1497,108 @@ function initSettings() {
         settings.speakReminders = e.target.checked;
         await setSetting('speakReminders', settings.speakReminders);
     });
-
-    // Local AI Model Setup (Auto-provisioned)
+    // AICore-Only AI Setup
     const modelStatusEl = document.getElementById('ai-model-status');
-    const downloadBtn = document.getElementById('btn-settings-download');
-    const installBtn = document.getElementById('btn-settings-install');
+    const engineTypeEl = document.getElementById('ai-engine-type');
+    const setupRow = document.getElementById('aicore-setup-row');
+    const oldModelRow = document.getElementById('old-model-cleanup-row');
+    const oldModelInfo = document.getElementById('old-model-info');
+    const deleteModelBtn = document.getElementById('btn-delete-model');
+    const clearCacheBtn = document.getElementById('btn-clear-ai-cache');
 
-    // Check model status on settings load
     if (modelStatusEl && window.Capacitor && Capacitor.isNativePlatform()) {
         try {
-            LlmPlugin.checkModel().then(res => {
-                if (res.exists) {
-                    modelStatusEl.textContent = `✅ AI Model ready (${res.sizeMB || '?'} MB on disk, ≤500 MB RAM)`;
+            // Check AICore availability
+            LlmPlugin.checkAICore().then(res => {
+                if (res.available) {
+                    modelStatusEl.textContent = '⚡ Gemini Nano Ready — AICore v' + (res.version || '');
                     modelStatusEl.style.color = '#00b894';
-                    // Hide download button since model exists
-                    if (downloadBtn) downloadBtn.textContent = 'Re-download Model';
-                } else if (isAutoProvisioning) {
-                    modelStatusEl.textContent = '📥 Downloading AI model in background...';
-                    modelStatusEl.style.color = '#fdcb6e';
+                    if (engineTypeEl) {
+                        engineTypeEl.textContent = '⚡ Gemini Nano — 0 download, hardware-accelerated on Tensor G3';
+                        engineTypeEl.style.color = '#00b894';
+                    }
+                    window._aiEngine = 'aicore';
                 } else {
-                    modelStatusEl.textContent = '⏳ AI Model will auto-download when connected to WiFi';
+                    modelStatusEl.textContent = '⚠️ AICore not enabled — follow setup below';
                     modelStatusEl.style.color = '#fdcb6e';
+                    if (engineTypeEl) {
+                        engineTypeEl.textContent = '❌ Not active — needs setup';
+                        engineTypeEl.style.color = '#ff7675';
+                    }
+                    // Show setup instructions
+                    if (setupRow) setupRow.style.display = '';
                 }
             }).catch(() => {
-                modelStatusEl.textContent = '⚠️ Could not check (plugin error)';
+                modelStatusEl.textContent = '⚠️ Could not check AICore';
                 modelStatusEl.style.color = '#fdcb6e';
+                if (setupRow) setupRow.style.display = '';
             });
+
+            // Check for old model files that should be cleaned up
+            LlmPlugin.getStorageStats().then(stats => {
+                if (stats.hasOldModelFiles && stats.oldModelSizeMB > 0) {
+                    if (oldModelRow) oldModelRow.style.display = '';
+                    if (oldModelInfo) oldModelInfo.textContent = `Found ${stats.oldModelSizeMB} MB of old model files — free this space!`;
+                }
+                if (clearCacheBtn && stats.cacheSizeMB > 0) {
+                    clearCacheBtn.textContent = `Clear Cache (${stats.cacheSizeMB} MB)`;
+                }
+            }).catch(() => { /* ignore */ });
+
         } catch (e) {
-            modelStatusEl.textContent = '⚠️ Native plugin not available';
+            modelStatusEl.textContent = '⚠️ Plugin error';
             modelStatusEl.style.color = '#fdcb6e';
         }
     } else if (modelStatusEl) {
-        modelStatusEl.textContent = '⚠️ Only available on Android device';
+        modelStatusEl.textContent = '⚠️ Only available on Android';
         modelStatusEl.style.color = '#fdcb6e';
     }
 
-    // Re-download / Force-download button
-    if (downloadBtn) {
-        downloadBtn.textContent = 'Download AI Model';
-        downloadBtn.addEventListener('click', async () => {
-            if (!window.Capacitor || !Capacitor.isNativePlatform()) {
-                showToast('Only available on Android device', 'error');
-                return;
-            }
+    // Delete old model files button
+    if (deleteModelBtn) {
+        deleteModelBtn.addEventListener('click', async () => {
+            if (!window.Capacitor || !Capacitor.isNativePlatform()) return;
 
-            downloadBtn.textContent = 'Downloading...';
-            downloadBtn.disabled = true;
-            if (modelStatusEl) {
-                modelStatusEl.textContent = '📥 Downloading AI Model...';
-                modelStatusEl.style.color = '#fdcb6e';
-            }
+            deleteModelBtn.textContent = 'Cleaning...';
+            deleteModelBtn.disabled = true;
 
             try {
-                // Listen for progress
-                const listener = await LlmPlugin.addListener('modelDownloadProgress', (data) => {
-                    if (modelStatusEl) {
-                        modelStatusEl.textContent = `📥 Downloading... ${data.percent}% (${data.downloadedMB}/${data.totalMB} MB)`;
-                    }
-                });
-
-                const result = await LlmPlugin.autoProvisionModel({});
-                if (listener && listener.remove) listener.remove();
-
-                if (result.status === 'downloaded' || result.status === 'already_exists') {
-                    showToast('✅ AI Model ready!', 'success');
-                    if (modelStatusEl) {
-                        modelStatusEl.textContent = `✅ AI Model ready (${result.sizeMB || '?'} MB, ≤500 MB RAM)`;
-                        modelStatusEl.style.color = '#00b894';
-                    }
-                    isModelLoaded = false; // Reset so next askAI reloads with new model
+                const res = await LlmPlugin.deleteModel();
+                if (res.deleted) {
+                    showToast(`✅ Freed ${res.freedMB} MB!`, 'success');
+                    if (oldModelRow) oldModelRow.style.display = 'none';
+                } else {
+                    showToast('No old files found', 'info');
                 }
             } catch (e) {
-                console.error('Download error:', e);
-                showToast('❌ Download failed: ' + (e.message || 'Unknown error'), 'error');
-                if (modelStatusEl) {
-                    modelStatusEl.textContent = '❌ Download failed — check internet connection';
-                    modelStatusEl.style.color = '#ff7675';
-                }
+                showToast('❌ ' + (e.message || 'Cleanup failed'), 'error');
             } finally {
-                downloadBtn.textContent = 'Re-download Model';
-                downloadBtn.disabled = false;
+                deleteModelBtn.textContent = 'Delete';
+                deleteModelBtn.disabled = false;
             }
         });
     }
 
-    // Install button (legacy — install from Downloads folder)
-    if (installBtn) {
-        installBtn.addEventListener('click', async () => {
-            if (!window.Capacitor || !Capacitor.isNativePlatform()) {
-                showToast('Install only works on Android device', 'error');
-                return;
-            }
+    // Clear Cache button
+    if (clearCacheBtn) {
+        clearCacheBtn.addEventListener('click', async () => {
+            if (!window.Capacitor || !Capacitor.isNativePlatform()) return;
 
-            installBtn.textContent = 'Installing...';
-            installBtn.disabled = true;
+            clearCacheBtn.textContent = 'Clearing...';
+            clearCacheBtn.disabled = true;
 
             try {
-                const res = await LlmPlugin.installModel();
-                if (res.status === 'installed') {
-                    showToast('✅ Model installed successfully!', 'success');
-                    if (modelStatusEl) {
-                        modelStatusEl.textContent = '✅ AI Model installed and ready!';
-                        modelStatusEl.style.color = '#00b894';
-                    }
-                    isModelLoaded = false;
-                }
+                const res = await LlmPlugin.clearCache();
+                showToast(`✅ Cache cleared — freed ${res.freedMB} MB`, 'success');
             } catch (e) {
-                showToast('❌ ' + (e.message || 'Install failed'), 'error');
+                showToast('❌ ' + (e.message || 'Clear failed'), 'error');
             } finally {
-                installBtn.textContent = 'Install from Downloads';
-                installBtn.disabled = false;
+                clearCacheBtn.textContent = 'Clear Cache';
+                clearCacheBtn.disabled = false;
             }
         });
     }
+
 
     // Export
     document.getElementById('export-data-btn').addEventListener('click', async () => {
@@ -1666,7 +1663,14 @@ function initSettings() {
                 await signIn();
             } catch (e) {
                 console.error('Sign-in failed:', e);
-                showToast('Sign-in failed: ' + (e.message || 'Unknown error'), 'error');
+                const errMsg = e.message || String(e);
+                if (errMsg.includes('plugin not loaded') || errMsg.includes('google-services.json') || errMsg.includes('not initialized')) {
+                    showToast('Google Sign-In not configured yet. Firebase setup needed — see the setup guide.', 'error');
+                } else if (errMsg.includes('canceled') || errMsg.includes('cancelled') || errMsg.includes('12501')) {
+                    showToast('Sign-in cancelled.', 'info');
+                } else {
+                    showToast('Sign-in failed: ' + errMsg, 'error');
+                }
             } finally {
                 signInBtn.textContent = 'Sign in with Google';
                 signInBtn.disabled = false;
@@ -1909,88 +1913,45 @@ let isModelLoaded = false;
 let isAutoProvisioning = false;
 
 /**
- * Auto-provision the LLM model on first launch.
- * Downloads the model file (~1.1 GB) in the background from a hosted URL.
- * The model is configured to use ≤ 0.5 GB RAM (maxTokens=256).
+ * Auto-provision the AI engine on first launch.
+ * 
+ * THREE-TIER STRATEGY:
+ * 1. AICore (Gemini Nano) — 0 bytes download, hardware-accelerated (Pixel 8+)
+ * 2. MediaPipe Gemma 2B — 1.1 GB download, ~500 MB RAM (fallback)
+ * 3. No AI — app works fine without it (voice commands still work)
  */
 async function autoProvisionLLM() {
-    // Only on native Android
+    // AICore-only: just detect if Gemini Nano is available
     if (!window.Capacitor || !Capacitor.isNativePlatform()) {
-        console.log('⏭ LLM auto-provision skipped (not native)');
+        console.log('⏭ AICore check skipped (not native)');
         return;
     }
 
     try {
-        // Check if model already exists
-        const check = await LlmPlugin.checkModel();
-        if (check.exists) {
-            console.log('✅ LLM model already present (' + (check.sizeMB || '?') + ' MB)');
-            updateModelStatusUI('ready', 'AI Model Ready ✅');
-            return;
-        }
-
-        // Model not found — start auto-download
-        console.log('📥 Starting auto-provision of LLM model...');
-        isAutoProvisioning = true;
-        updateModelStatusUI('downloading', 'Downloading AI Model (0%)...');
-
-        // Listen for progress events
-        const progressListener = await LlmPlugin.addListener('modelDownloadProgress', (data) => {
-            const percent = data.percent || 0;
-            const downloadedMB = data.downloadedMB || 0;
-            const totalMB = data.totalMB || 0;
-            updateModelStatusUI('downloading', `Downloading AI Model... ${percent}% (${downloadedMB}/${totalMB} MB)`);
-        });
-
-        // Trigger auto-download
-        const result = await LlmPlugin.autoProvisionModel({});
-
-        // Cleanup listener
-        if (progressListener && progressListener.remove) {
-            progressListener.remove();
-        }
-
-        isAutoProvisioning = false;
-
-        if (result.status === 'already_exists') {
-            console.log('✅ Model already exists at: ' + result.path);
-            updateModelStatusUI('ready', 'AI Model Ready ✅');
-        } else if (result.status === 'downloaded') {
-            console.log('✅ Model auto-downloaded: ' + result.path + ' (' + result.sizeMB + ' MB)');
-            updateModelStatusUI('ready', 'AI Model Downloaded ✅');
-            showToast('AI Model downloaded and ready! 🧠', 'success');
+        const aicore = await LlmPlugin.checkAICore();
+        if (aicore.available) {
+            console.log('⚡ AICore (Gemini Nano) detected! Version:', aicore.version);
+            window._aiEngine = 'aicore';
+            updateModelStatusUI('ready', '⚡ Gemini Nano Ready — 0 bytes download');
+        } else {
+            console.log('⚠️ AICore not available. Enable in Developer Options.');
+            window._aiEngine = 'none';
+            updateModelStatusUI('error', '⚠️ AICore not enabled — enable in Developer Options');
         }
     } catch (err) {
-        isAutoProvisioning = false;
-        console.warn('⚠️ LLM auto-provision failed:', err.message || err);
-        updateModelStatusUI('error', 'AI Download Failed — will retry');
-        // Don't show an error toast — the app works fine without AI.
-        // It will retry on next launch or when user tries to ask AI.
+        console.warn('⚠️ AICore check failed:', err.message || err);
+        window._aiEngine = 'none';
+        updateModelStatusUI('error', '⚠️ Could not detect AICore');
     }
 }
 
-/**
- * Update the AI model status in the settings UI and header.
- */
 function updateModelStatusUI(status, message) {
     const modelStatusEl = document.getElementById('ai-model-status');
     if (!modelStatusEl) return;
-
     modelStatusEl.textContent = message;
-    switch (status) {
-        case 'ready':
-            modelStatusEl.style.color = '#00b894';
-            break;
-        case 'downloading':
-            modelStatusEl.style.color = '#fdcb6e';
-            break;
-        case 'error':
-            modelStatusEl.style.color = '#ff7675';
-            break;
-        default:
-            modelStatusEl.style.color = '#636e72';
-    }
+    modelStatusEl.style.color = status === 'ready' ? '#00b894' : status === 'error' ? '#ff7675' : '#fdcb6e';
 }
+
 
 async function askAI(question) {
     // Show Overlay
@@ -2011,7 +1972,7 @@ async function askAI(question) {
             <div class="ai-dot"></div>
             <div class="ai-dot"></div>
         </div>
-        <span>${isModelLoaded ? 'Thinking...' : 'Initializing Local AI (One-time)...'}</span>
+        <span>⚡ Thinking with Gemini Nano...</span>
     `;
 
     // Setup Close Handlers
@@ -2032,185 +1993,118 @@ async function askAI(question) {
     newCloseBtnBottom.addEventListener('click', closeOverlay);
 
     try {
-        // Step 0: Check if Model Exists — auto-download if missing
-        if (!isModelLoaded) {
-            const check = await LlmPlugin.checkModel();
-            if (!check.exists) {
-                // Model missing — auto-download it
-                answerEl.innerHTML = `
-                    <div style="text-align: center; padding: 20px;">
-                        <h3>🧠 Setting Up AI</h3>
-                        <p>Downloading the AI model for the first time. This happens only once and works offline afterwards.</p>
-                        <p style="font-size: 14px; opacity: 0.9;">Model size: ~1.1 GB • RAM usage: ≤ 0.5 GB</p>
-                        <div id="ai-download-progress" style="margin: 20px 0;">
-                            <div style="background: rgba(255,255,255,0.1); border-radius: 8px; height: 8px; overflow: hidden;">
-                                <div id="ai-download-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6C5CE7, #a29bfe); border-radius: 8px; transition: width 0.3s ease;"></div>
-                            </div>
-                            <p id="ai-download-text" style="font-size: 12px; margin-top: 8px; opacity: 0.7;">Starting download...</p>
-                        </div>
-                        <button id="ai-download-cancel" style="background: rgba(255,255,255,0.1); color: white; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; font-size: 13px;">Cancel</button>
-                    </div>
-                `;
+        // Build context-enriched prompt (RAG)
+        const fullPrompt = await buildAIPrompt(question);
 
-                document.getElementById('ai-download-cancel').addEventListener('click', closeOverlay);
-
-                // Start the download
-                const progressListener = await LlmPlugin.addListener('modelDownloadProgress', (data) => {
-                    const bar = document.getElementById('ai-download-bar');
-                    const text = document.getElementById('ai-download-text');
-                    if (bar) bar.style.width = data.percent + '%';
-                    if (text) text.textContent = `${data.percent}% — ${data.downloadedMB}/${data.totalMB} MB`;
-                });
-
-                try {
-                    const result = await LlmPlugin.autoProvisionModel({});
-                    if (progressListener && progressListener.remove) progressListener.remove();
-
-                    if (result.status === 'downloaded' || result.status === 'already_exists') {
-                        answerEl.innerHTML = `
-                            <div class="ai-loading">
-                                <div class="ai-dot"></div>
-                                <div class="ai-dot"></div>
-                                <div class="ai-dot"></div>
-                            </div>
-                            <span>Model downloaded! Loading AI engine...</span>
-                        `;
-                        // Continue to load the model below
-                    }
-                } catch (downloadErr) {
-                    if (progressListener && progressListener.remove) progressListener.remove();
-                    answerEl.innerHTML = `
-                        <div style="text-align: center; padding: 20px;">
-                            <h3>⚠️ Download Failed</h3>
-                            <p>${downloadErr.message || 'Network error'}</p>
-                            <p style="font-size: 12px; opacity: 0.7;">Check your internet connection and try again. The download will resume where it left off.</p>
-                            <button id="ai-retry" style="background: #6C5CE7; color: white; padding: 12px; border-radius: 8px; border: none; width: 100%; margin: 10px 0; cursor: pointer;">Retry</button>
-                        </div>
-                    `;
-                    document.getElementById('ai-retry').addEventListener('click', () => askAI(question));
-                    return;
-                }
-            }
-
-            // If exists, load it with memory-optimized settings (≤ 0.5 GB RAM)
-            console.log('Loading local model (memory budget: ≤0.5 GB)...');
-            answerEl.innerHTML = `
-                <div class="ai-loading">
-                    <div class="ai-dot"></div>
-                    <div class="ai-dot"></div>
-                    <div class="ai-dot"></div>
-                </div>
-                <span>Initializing AI Engine... (One-time, ≤0.5 GB RAM)</span>
-            `;
-
-            const loadRes = await LlmPlugin.loadModel();
-            if (loadRes.status === 'loaded' || loadRes.status === 'already_loaded') {
-                isModelLoaded = true;
-                console.log('✅ Model loaded. Max tokens:', loadRes.maxTokens, '| RAM budget:', loadRes.memoryBudgetMB, 'MB');
-            } else {
-                throw new Error('Failed to load model: ' + JSON.stringify(loadRes));
-            }
-        }
-
-        // Step 2: Retrieve Relevant Context (True RAG)
-        // We only fetch data that matches keywords in the question to keep context tiny.
-        console.log('Retrieving relevant context...');
-        const allReminders = await getAllItems('reminders');
-        const allNotes = await getAllItems('notes');
-
-        // simple keyword extraction (remove common stop words)
-        const stopWords = new Set(['the', 'is', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'what', 'where', 'when', 'who', 'how', 'tell', 'me', 'about', 'question', 'ask', 'ai', 'amma']);
-        const keywords = question.toLowerCase()
-            .replace(/[^\w\s]/g, '') // remove punctuation
-            .split(/\s+/)
-            .filter(w => w.length > 2 && !stopWords.has(w));
-
-        console.log('Query Keywords:', keywords);
-
-        // Helper to score relevance
-        const scoreItem = (text) => {
-            if (!text) return 0;
-            const lower = text.toLowerCase();
-            let score = 0;
-            keywords.forEach(k => {
-                if (lower.includes(k)) score += 1;
-            });
-            return score;
-        };
-
-        // Filter Reminders (Active + Relevant)
-        const relevantReminders = allReminders
-            .filter(r => !r.completed)
-            .map(r => ({ ...r, score: scoreItem(r.title + ' ' + r.message) }))
-            .filter(r => r.score > 0 || question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 5); // Max 5 relevant reminders
-
-        // Filter Notes (Relevant Only)
-        const relevantNotes = allNotes
-            .map(n => ({ ...n, score: scoreItem(n.title + ' ' + n.content) }))
-            .filter(n => n.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 3); // Max 3 relevant notes
-
-        // Construct Miniature Context
-        let contextString = "Context Data:\n";
-
-        if (relevantReminders.length > 0) {
-            contextString += "Relevant Reminders:\n" + relevantReminders.map(r =>
-                `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`
-            ).join("\n") + "\n";
-        } else if (allReminders.filter(r => !r.completed).length > 0 && (question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))) {
-            const upcoming = allReminders.filter(r => !r.completed).slice(0, 5);
-            contextString += "Upcoming Reminders:\n" + upcoming.map(r => `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`).join("\n") + "\n";
-        } else {
-            contextString += "(No relevant reminders found)\n";
-        }
-
-        if (relevantNotes.length > 0) {
-            contextString += "\nRelevant Notes:\n" + relevantNotes.map(n =>
-                `- Title: ${n.title}\n  Content: ${n.content}`
-            ).join("\n") + "\n";
-        } else {
-            contextString += "(No relevant notes found matching keywords)\n";
-        }
-
-        // Final Prompt: Tight and Focused
-        const fullPrompt = `You are Amma, a helpful assistant. Use the Context below to answer the User.\n${contextString}\nUser: ${question}\nAmma:`;
-
-        // Step 3: Generate Response
-        console.log('Generating response for:', fullPrompt);
-        const genRes = await LlmPlugin.generate({ prompt: fullPrompt });
+        // Generate with AICore (Gemini Nano) — ZERO download
+        console.log('Generating with AICore (Gemini Nano)...');
+        const genRes = await LlmPlugin.generateWithAICore({ prompt: fullPrompt });
         const answer = genRes.response;
 
         if (answer) {
-            // Display Answer
             answerEl.textContent = answer;
-
-            // Speak Answer
             speak(answer, settings.voice, settings.rate);
-
-            // Re-enable Speak Button
             newSpeakBtn.addEventListener('click', () => {
                 stopSpeaking();
                 speak(answer, settings.voice, settings.rate);
             });
-
         } else {
-            throw new Error('Empty response from AI');
+            throw new Error('Empty response from Gemini Nano');
         }
 
     } catch (err) {
         console.error('AI Error:', err);
-        answerEl.innerHTML = `
-            <div style="color: #ff6b6b">
-                <strong>Error:</strong> ${err.message || 'Unknown error'}
-                <br><br>
-                <small>The AI model will auto-download when connected to the internet. Please check your connection and try again.</small>
-            </div>
-        `;
-        speak('Sorry, I had trouble with the local AI model.', settings.voice, settings.rate);
+        const errMsg = err.message || 'Unknown error';
+
+        // If AICore isn't available, show setup instructions
+        if (errMsg.includes('AICore') || errMsg.includes('not available') || errMsg.includes('ClassNotFoundException')) {
+            answerEl.innerHTML = `
+                <div style="text-align: center; padding: 16px;">
+                    <h3>⚡ Enable Gemini Nano</h3>
+                    <p style="font-size: 13px; line-height: 1.6; text-align: left; margin: 12px 0;">
+                        This app uses Google's built-in AI — no download needed!<br><br>
+                        <strong>Setup (one-time):</strong><br>
+                        1. Settings → About Phone → tap Build Number 7 times<br>
+                        2. Settings → System → Developer Options<br>
+                        3. Search "AICore" → toggle ON<br>
+                        4. Wait 5 min for Gemini Nano to download in background<br>
+                        5. Come back here and ask again!
+                    </p>
+                    <button onclick="document.getElementById('ai-overlay').classList.add('hidden')" 
+                        style="background: #6C5CE7; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; margin-top: 8px;">
+                        Got it
+                    </button>
+                </div>
+            `;
+        } else {
+            answerEl.innerHTML = `
+                <div style="color: #ff6b6b">
+                    <strong>Error:</strong> ${errMsg}
+                    <br><br>
+                    <small>Make sure AICore is enabled in Developer Options and Gemini Nano has finished downloading.</small>
+                </div>
+            `;
+        }
+        speak('I need AICore enabled to answer. Please check the setup instructions.', settings.voice, settings.rate);
     }
+}
+// ==========================================
+// AI Prompt Builder (RAG Context)
+// Shared by both AICore and MediaPipe paths
+// ==========================================
+
+/**
+ * Build the AI prompt with RAG context from notes and reminders.
+ */
+async function buildAIPrompt(question) {
+    const allReminders = await getAllItems('reminders');
+    const allNotes = await getAllItems('notes');
+
+    // Simple keyword extraction
+    const stopWords = new Set(['the', 'is', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'what', 'where', 'when', 'who', 'how', 'tell', 'me', 'about', 'question', 'ask', 'ai', 'amma']);
+    const keywords = question.toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 2 && !stopWords.has(w));
+
+    const scoreItem = (text) => {
+        if (!text) return 0;
+        const lower = text.toLowerCase();
+        let score = 0;
+        keywords.forEach(k => { if (lower.includes(k)) score += 1; });
+        return score;
+    };
+
+    const relevantReminders = allReminders
+        .filter(r => !r.completed)
+        .map(r => ({ ...r, score: scoreItem(r.title + ' ' + r.message) }))
+        .filter(r => r.score > 0 || question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+
+    const relevantNotes = allNotes
+        .map(n => ({ ...n, score: scoreItem(n.title + ' ' + n.content) }))
+        .filter(n => n.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+    let ctx = "Context Data:\n";
+    if (relevantReminders.length > 0) {
+        ctx += "Relevant Reminders:\n" + relevantReminders.map(r => `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`).join("\n") + "\n";
+    } else if (allReminders.filter(r => !r.completed).length > 0 && (question.toLowerCase().includes('reminder') || question.toLowerCase().includes('schedule'))) {
+        const upcoming = allReminders.filter(r => !r.completed).slice(0, 5);
+        ctx += "Upcoming Reminders:\n" + upcoming.map(r => `- ${r.title} at ${new Date(r.datetime).toLocaleString()}`).join("\n") + "\n";
+    } else {
+        ctx += "(No relevant reminders found)\n";
+    }
+
+    if (relevantNotes.length > 0) {
+        ctx += "\nRelevant Notes:\n" + relevantNotes.map(n => `- Title: ${n.title}\n  Content: ${n.content}`).join("\n") + "\n";
+    } else {
+        ctx += "(No relevant notes found)\n";
+    }
+
+    return `You are Amma, a helpful assistant. Use the Context below to answer the User.\n${ctx}\nUser: ${question}\nAmma:`;
 }
 
 // ==========================================

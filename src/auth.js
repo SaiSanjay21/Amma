@@ -1,7 +1,7 @@
 /**
  * RemindMe AI — Google Authentication Module
- * Handles Google Sign-In via Google Identity Services (GIS) for Web
- * and Capacitor Google Auth plugin for Android.
+ * Handles Google Sign-In via @capgo/capacitor-social-login for Android
+ * and Google Identity Services (GIS) for Web.
  *
  * Uses OAuth 2.0 with the `drive.appdata` scope so each user's data
  * is stored in their own Google Drive (they pay for their own storage).
@@ -10,8 +10,9 @@
 // =============================================
 // ⚠️  REPLACE THIS with your own Client ID
 //     from Google Cloud Console → Credentials
+//     You need BOTH a Web Client ID AND an Android Client ID
 // =============================================
-const WEB_CLIENT_ID = '116566423441-pt8a8t3r3c9dmde5q6id0ajgr73e77lm.apps.googleusercontent.com';
+const WEB_CLIENT_ID = '268608325920-0ungraf36u5kfdmr837mvgkj6npqcdhu.apps.googleusercontent.com';
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
@@ -22,6 +23,9 @@ let tokenExpiresAt = 0;
 
 // Callbacks set by main.js
 let onSignInChange = null;
+
+// Social Login plugin reference (Android)
+let SocialLogin = null;
 
 /**
  * Detect if running inside Capacitor native shell
@@ -104,24 +108,23 @@ async function initWebAuth() {
 }
 
 /**
- * Android: Initialize Capacitor Google Auth
+ * Android: Initialize @capgo/capacitor-social-login
+ * This plugin supports Capacitor 7 and uses the modern Credential Manager API.
  */
 async function initNativeAuth() {
     try {
-        // Dynamic import with string variable to prevent Vite/Rollup from resolving at build time.
-        // This package only exists in the Android Capacitor build.
-        const pkgName = '@nickvdl/capacitor-google-auth';
-        const { GoogleAuth } = await import(/* @vite-ignore */ pkgName);
-        window._googleAuth = GoogleAuth;
+        const mod = await import('@capgo/capacitor-social-login');
+        SocialLogin = mod.SocialLogin;
 
-        await GoogleAuth.initialize({
-            clientId: WEB_CLIENT_ID,
-            scopes: [SCOPES],
-            grantOfflineAccess: true,
+        await SocialLogin.initialize({
+            google: {
+                webClientId: WEB_CLIENT_ID,
+            },
         });
-        console.log('📱 Native Google Auth initialized');
+        console.log('📱 Native Google Auth initialized via @capgo/capacitor-social-login');
     } catch (e) {
         console.error('Native Google Auth init failed:', e);
+        console.error('Make sure @capgo/capacitor-social-login is installed and google-services.json exists');
     }
 }
 
@@ -202,20 +205,43 @@ async function signInWeb() {
 
 async function signInNative() {
     try {
-        const GoogleAuth = window._googleAuth;
-        if (!GoogleAuth) throw new Error('Google Auth plugin not loaded');
+        if (!SocialLogin) {
+            throw new Error(
+                'Google Sign-In plugin not loaded. Please check:\n' +
+                '1. google-services.json exists in android/app/\n' +
+                '2. @capgo/capacitor-social-login is installed\n' +
+                '3. OAuth credentials are set up in Google Cloud Console'
+            );
+        }
 
-        const result = await GoogleAuth.signIn();
+        const result = await SocialLogin.login({
+            provider: 'google',
+            options: {
+                scopes: [SCOPES],
+            },
+        });
+
         console.log('Native sign-in result:', result);
 
-        accessToken = result.authentication?.accessToken;
+        // Extract token and user from the result
+        const profile = result?.result?.profile;
+        const auth = result?.result;
+
+        accessToken = auth?.accessToken || auth?.idToken;
         tokenExpiresAt = Date.now() + 3600 * 1000;
 
         currentUser = {
-            name: result.name || result.displayName || result.givenName || 'User',
-            email: result.email,
-            picture: result.imageUrl,
+            name: profile?.name || profile?.displayName || profile?.givenName || 'User',
+            email: profile?.email || '',
+            picture: profile?.imageUrl || profile?.picture || '',
         };
+
+        // If we got an idToken but no accessToken, exchange it
+        // For Drive API access, we need an access token
+        if (!accessToken && auth?.idToken) {
+            console.warn('Got ID token but no access token. Drive sync may not work.');
+            accessToken = auth.idToken;
+        }
 
         persistSession();
         onSignInChange?.(currentUser);
@@ -230,9 +256,9 @@ async function signInNative() {
  * Sign out
  */
 export async function signOut() {
-    if (isCapacitorNative() && window._googleAuth) {
+    if (isCapacitorNative() && SocialLogin) {
         try {
-            await window._googleAuth.signOut();
+            await SocialLogin.logout({ provider: 'google' });
         } catch (e) { /* ignore */ }
     } else if (accessToken && window.google?.accounts?.oauth2) {
         google.accounts.oauth2.revoke(accessToken);
@@ -252,10 +278,17 @@ export async function signOut() {
 export async function getAccessToken() {
     if (!accessToken || Date.now() >= tokenExpiresAt) {
         // Token expired or missing — need to re-authenticate
-        if (isCapacitorNative() && window._googleAuth) {
+        if (isCapacitorNative() && SocialLogin) {
             try {
-                const result = await window._googleAuth.refresh();
-                accessToken = result.accessToken;
+                // Try silent refresh
+                const result = await SocialLogin.login({
+                    provider: 'google',
+                    options: {
+                        scopes: [SCOPES],
+                    },
+                });
+                const auth = result?.result;
+                accessToken = auth?.accessToken || auth?.idToken;
                 tokenExpiresAt = Date.now() + 3600 * 1000;
                 persistSession();
             } catch (e) {

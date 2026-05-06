@@ -466,26 +466,43 @@
               </div>
             </div>
             <div class="settings-section">
-              <h3>🧠 Local AI Model</h3>
+              <h3>🧠 AI Engine — Gemini Nano (AICore)</h3>
               <div class="setting-row">
                 <div class="setting-info">
-                  <label>Model Status</label>
-                  <p id="ai-model-status" style="color: #fdcb6e;">Checking...</p>
+                  <label>AI Status</label>
+                  <p id="ai-model-status" style="color: #fdcb6e;">Checking AICore...</p>
                 </div>
               </div>
               <div class="setting-row">
                 <div class="setting-info">
-                  <label>Step 1: Download Model</label>
-                  <p>Opens Kaggle to download Gemma 2B (1.3 GB, one-time)</p>
+                  <label>Engine</label>
+                  <p id="ai-engine-type" style="font-size: 12px; opacity: 0.8;">⚡ Gemini Nano — 0 download, hardware-accelerated</p>
                 </div>
-                <button id="btn-settings-download" class="btn btn-secondary">Download</button>
               </div>
-              <div class="setting-row">
+              <div class="setting-row" id="aicore-setup-row" style="display: none;">
                 <div class="setting-info">
-                  <label>Step 2: Install from Downloads</label>
-                  <p>Finds the downloaded model and sets it up</p>
+                  <label>How to Enable AICore</label>
+                  <p style="font-size: 12px; line-height: 1.5;">
+                    1. Settings → About Phone → tap Build Number 7 times<br>
+                    2. Settings → System → Developer Options<br>
+                    3. Search "AICore" → toggle ON<br>
+                    4. Wait 5 min for Gemini Nano to download
+                  </p>
                 </div>
-                <button id="btn-settings-install" class="btn btn-secondary">Install</button>
+              </div>
+              <div class="setting-row danger" id="old-model-cleanup-row" style="display: none;">
+                <div class="setting-info">
+                  <label>Clean Up Old Model Files</label>
+                  <p id="old-model-info">Old model files from previous version detected</p>
+                </div>
+                <button id="btn-delete-model" class="btn btn-danger">Delete</button>
+              </div>
+              <div class="setting-row danger">
+                <div class="setting-info">
+                  <label>Clear App Cache</label>
+                  <p>Clears temp files and cached data</p>
+                </div>
+                <button id="btn-clear-ai-cache" class="btn btn-danger">Clear Cache</button>
               </div>
             </div>
             <div class="settings-section">
