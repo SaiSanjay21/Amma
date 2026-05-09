@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.remindme.ai',
   appName: 'RemindMe AI',
   webDir: 'dist',
-  backgroundColor: '#0a0a1a',
+  backgroundColor: '#f5f0e8',
   android: {
     buildOptions: {
       keystorePath: undefined,
@@ -16,15 +16,15 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
-      backgroundColor: '#0a0a1a',
+      backgroundColor: '#f5f0e8',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
       splashFullScreen: true,
       splashImmersive: true,
     },
     StatusBar: {
-      style: 'DARK',
-      backgroundColor: '#0a0a1a',
+      style: 'LIGHT',
+      backgroundColor: '#5d4037',
     },
     LocalNotifications: {
       smallIcon: 'ic_stat_icon',

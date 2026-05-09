@@ -870,18 +870,39 @@ function handleAlarm(reminder) {
     message.textContent = reminderMessage || `It's time for: ${reminderTitle || 'your reminder'}`;
     overlay.classList.remove('hidden');
 
-    // After a short chime, stop alarm and speak the reminder
-    setTimeout(() => {
-        stopAlarmSound();
-
-        // Always speak the reminder out loud
-        speak(spokenText, settings.voice, settings.rate).then(() => {
-            // After speaking, play a soft chime again as ongoing alert
-            if (overlay && !overlay.classList.contains('hidden')) {
-                playAlarmSound(settings.alarmSound, Math.max(settings.volume * 0.3, 0.1));
+    // Asynchronously fetch contextual message, meanwhile play the chime
+    (async () => {
+        let finalSpokenText = spokenText;
+        
+        const aiPromise = (async () => {
+            if (window._aiEngine === 'aicore') {
+                try {
+                    const contextPrompt = await buildAlarmContextPrompt(reminder);
+                    const genRes = await LlmPlugin.generateWithAICore({ prompt: contextPrompt });
+                    if (genRes.response) {
+                        finalSpokenText = genRes.response;
+                    }
+                } catch (e) {
+                    console.warn("Contextual AI failed:", e);
+                }
             }
-        });
-    }, 1500); // Let alarm chime play for 1.5s, then speak
+        })();
+
+        const timerPromise = new Promise(resolve => setTimeout(resolve, 1500));
+        
+        await Promise.all([aiPromise, timerPromise]);
+
+        // Now stop chime and speak
+        stopAlarmSound();
+        if (overlay && !overlay.classList.contains('hidden')) {
+            message.textContent = finalSpokenText; // update UI with AI text
+            speak(finalSpokenText, settings.voice, settings.rate).then(() => {
+                if (overlay && !overlay.classList.contains('hidden')) {
+                    playAlarmSound(settings.alarmSound, Math.max(settings.volume * 0.3, 0.1));
+                }
+            });
+        }
+    })();
 
     // Browser notification
     if (settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
@@ -2104,7 +2125,82 @@ async function buildAIPrompt(question) {
         ctx += "(No relevant notes found)\n";
     }
 
-    return `You are Amma, a helpful assistant. Use the Context below to answer the User.\n${ctx}\nUser: ${question}\nAmma:`;
+    return `You are Amma, an on-device voice-to-notes AI app. Your goal is to map user intent into a hierarchical graph database that connects reminders based on semantic relevance and physical context.
+
+Task 1: Semantic Tree Structuring
+Analyze the nodes in the context to identify Core Intents (e.g., "Work," "Home Maintenance," "Travel").
+Merge Contexts: If two reminders/notes share a logical trigger, mentally create a Relationship Edge between them.
+
+Task 2: Unified Briefing / Answer Generation
+Based on the context and the user's question, synthesize your answer by querying your internal semantic graph for all Connected Nodes.
+
+${ctx}
+User Question: ${question}
+
+Constraints:
+- Prioritize Proximity over Schedule.
+- Keep summaries Action-Oriented and concise.
+- Speak directly to ${userName}.
+Amma:`;
+}
+
+/**
+ * Build the AI prompt for contextual alarms, combining current reminder with relevant notes/reminders.
+ */
+async function buildAlarmContextPrompt(currentReminder) {
+    const allReminders = await getAllItems('reminders');
+    const allNotes = await getAllItems('notes');
+
+    const now = new Date();
+    const todayStr = formatDateLocal(now);
+    const upcomingReminders = allReminders
+        .filter(r => !r.completed && r.id !== currentReminder.id && r.date === todayStr)
+        .slice(0, 5);
+
+    const keywords = (currentReminder.title + ' ' + (currentReminder.message || '')).toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    const scoreItem = (text) => {
+        if (!text) return 0;
+        const lower = text.toLowerCase();
+        let score = 0;
+        keywords.forEach(k => { if (lower.includes(k)) score += 1; });
+        return score;
+    };
+
+    const relevantNotes = allNotes
+        .map(n => ({ ...n, score: scoreItem(n.title + ' ' + n.content) }))
+        .filter(n => n.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+    let ctx = `[TRIGGER OCCURRED]\nTime: ${formatTimeDisplay(currentReminder.time)}\nCurrent Reminder: ${currentReminder.title}\n`;
+    if (currentReminder.message) {
+        ctx += `Message: ${currentReminder.message}\n`;
+    }
+
+    if (upcomingReminders.length > 0) {
+        ctx += "\nOther Schedule/Reminders Today:\n" + upcomingReminders.map(r => `- ${r.title} at ${formatTimeDisplay(r.time)}`).join("\n");
+    }
+    if (relevantNotes.length > 0) {
+        ctx += "\nDatabase Notes:\n" + relevantNotes.map(n => `- ${n.title}: ${n.content}`).join("\n");
+    }
+
+    return `You are Amma, an on-device voice-to-notes AI app. Your goal is to map user intent into a hierarchical graph database that connects reminders based on semantic relevance and physical context.
+
+Task 1: Semantic Tree Structuring
+Analyze the nodes in the context to identify the Core Intent. Merge Contexts: If two reminders/notes share a logical trigger (e.g., "9:00 AM Office" and "Leaving House for Keys"), create a Relationship Edge between them internally.
+
+Task 2: Unified Briefing Generation
+A specific trigger has occurred. Query your internal graph for all Connected Nodes. Instead of separate alerts, synthesize a Single Natural Language Notification.
+
+Context Data:
+${ctx}
+
+Constraints:
+- Prioritize Proximity over Schedule: If a location-based note (Car Keys) is critical for a time-based event (Office), they must be bundled.
+- Keep summaries Action-Oriented and concise (max 2 sentences).
+- Speak directly to ${userName}.
+- OUTPUT ONLY the final spoken natural language notification, no explanations or formatting.
+Amma:`;
 }
 
 // ==========================================
