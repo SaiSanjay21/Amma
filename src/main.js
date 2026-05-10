@@ -9,6 +9,7 @@ import { playAlarmSound, stopAlarmSound, speak, stopSpeaking, getVoices, playNot
 import { startListening, stopListening, parseVoiceCommand, initVoiceRecognition, initPassiveListening, stopPassiveListening, getIsPassiveListening } from './voice.js';
 import { startScheduler, snoozeReminder, completeReminder } from './scheduler.js';
 import { registerPlugin } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { initAuth, signIn, signOut, isSignedIn, getUserInfo } from './auth.js';
 import { initSync, fullSync, pushStoreToDrive, deleteCloudData, getLastSyncTime } from './drive.js';
 
@@ -151,9 +152,27 @@ async function init() {
             }, 3000);
         }
 
+        // Handle App Backgrounding / Phone Calls
+        App.addListener('appStateChange', ({ isActive }) => {
+            console.log('App state changed. Is active?', isActive);
+            if (!isActive) {
+                // If backgrounded (e.g. phone call comes in), stop active listening
+                stopListening();
+            }
+        });
+
+        // Setup manual refresh for briefing
+        const refreshBriefingBtn = document.getElementById('refresh-briefing-btn');
+        if (refreshBriefingBtn) {
+            refreshBriefingBtn.addEventListener('click', generateDailyBriefing);
+        }
+
         // Auto-provision the local AI model (downloads automatically on first launch)
         // Runs in background — doesn't block the app
-        autoProvisionLLM();
+        autoProvisionLLM().then(() => {
+            // Generate morning briefing once AI is ready
+            generateDailyBriefing();
+        });
 
         // Start passive listening (auto-listen for "Remind me" wake phrase)
         // Small delay to ensure everything is initialized and permissions are ready
@@ -2212,6 +2231,52 @@ async function generateUnifiedBriefingAtCreation(reminder) {
         }
     }
     return reminder.message || generateReminderMessage(reminder.title);
+}
+
+/**
+ * Realistic extendable feature: Daily Briefing
+ * Generates a morning briefing summary based on today's schedule and recent notes.
+ */
+async function generateDailyBriefing() {
+    const card = document.getElementById('daily-briefing-card');
+    const content = document.getElementById('daily-briefing-content');
+    if (!card || !content || window._aiEngine !== 'aicore') return;
+
+    card.classList.remove('hidden');
+    content.innerHTML = `<div class="ai-loading"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div></div><span style="margin-left: 10px;">Generating your daily briefing...</span>`;
+
+    try {
+        const allReminders = await getAllItems('reminders');
+        const allNotes = await getAllItems('notes');
+        
+        const now = new Date();
+        const todayStr = formatDateLocal(now);
+        
+        const todayReminders = allReminders.filter(r => !r.completed && r.date === todayStr);
+        // get recent notes
+        const recentNotes = allNotes.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+
+        let ctx = `Today's Schedule:\n${todayReminders.length > 0 ? todayReminders.map(r => `- ${r.title} at ${formatTimeDisplay(r.time)}`).join('\n') : 'No alarms set today.'}\n\n`;
+        ctx += `Recent Notes:\n${recentNotes.length > 0 ? recentNotes.map(n => `- ${n.title}: ${n.content}`).join('\n') : 'No recent notes.'}`;
+
+        const prompt = `You are Amma, an energetic AI assistant. Write a short, encouraging morning briefing (max 3 sentences) for your user ${userName}. 
+Summarize their schedule for today and subtly connect any relevant recent notes to their tasks. 
+Speak directly to ${userName} in a warm, natural tone. DO NOT use markdown formatting.
+
+Data:
+${ctx}
+Amma:`;
+
+        const genRes = await LlmPlugin.generateWithAICore({ prompt });
+        if (genRes.response) {
+            content.textContent = genRes.response;
+        } else {
+            content.textContent = "Your daily briefing could not be generated.";
+        }
+    } catch (e) {
+        console.warn("Daily briefing error:", e);
+        content.textContent = "Failed to load daily briefing.";
+    }
 }
 
 // ==========================================
