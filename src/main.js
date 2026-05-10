@@ -498,7 +498,7 @@ function initVoice() {
                 if (parsed.isReminder) {
                     // ---- Case 1 & 2: Contains date/time → Create a reminder ----
                     const title = parsed.title || 'Reminder';
-                    const message = parsed.message || generateReminderMessage(title);
+                    let message = parsed.message || generateReminderMessage(title);
 
                     const reminder = {
                         id: `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -513,6 +513,9 @@ function initVoice() {
                         createdAt: new Date().toISOString(),
                         source: 'voice',
                     };
+
+                    // Generate unified briefing before saving
+                    reminder.message = await generateUnifiedBriefingAtCreation(reminder);
 
                     await addItem('reminders', reminder);
 
@@ -629,7 +632,7 @@ function startPassiveListeningMode() {
             if (parsed.isReminder) {
                 // ---- Reminder detected: create reminder ----
                 const title = parsed.title || 'Reminder';
-                const message = parsed.message || generateReminderMessage(title);
+                let message = parsed.message || generateReminderMessage(title);
 
                 const reminder = {
                     id: `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -644,6 +647,9 @@ function startPassiveListeningMode() {
                     createdAt: new Date().toISOString(),
                     source: 'voice-passive',
                 };
+
+                // Generate unified briefing before saving
+                reminder.message = await generateUnifiedBriefingAtCreation(reminder);
 
                 await addItem('reminders', reminder);
 
@@ -870,39 +876,18 @@ function handleAlarm(reminder) {
     message.textContent = reminderMessage || `It's time for: ${reminderTitle || 'your reminder'}`;
     overlay.classList.remove('hidden');
 
-    // Asynchronously fetch contextual message, meanwhile play the chime
-    (async () => {
-        let finalSpokenText = spokenText;
-        
-        const aiPromise = (async () => {
-            if (window._aiEngine === 'aicore') {
-                try {
-                    const contextPrompt = await buildAlarmContextPrompt(reminder);
-                    const genRes = await LlmPlugin.generateWithAICore({ prompt: contextPrompt });
-                    if (genRes.response) {
-                        finalSpokenText = genRes.response;
-                    }
-                } catch (e) {
-                    console.warn("Contextual AI failed:", e);
-                }
-            }
-        })();
-
-        const timerPromise = new Promise(resolve => setTimeout(resolve, 1500));
-        
-        await Promise.all([aiPromise, timerPromise]);
-
-        // Now stop chime and speak
+    // After a short chime, stop alarm and speak the reminder
+    setTimeout(() => {
         stopAlarmSound();
-        if (overlay && !overlay.classList.contains('hidden')) {
-            message.textContent = finalSpokenText; // update UI with AI text
-            speak(finalSpokenText, settings.voice, settings.rate).then(() => {
-                if (overlay && !overlay.classList.contains('hidden')) {
-                    playAlarmSound(settings.alarmSound, Math.max(settings.volume * 0.3, 0.1));
-                }
-            });
-        }
-    })();
+
+        // Always speak the reminder out loud
+        speak(spokenText, settings.voice, settings.rate).then(() => {
+            // After speaking, play a soft chime again as ongoing alert
+            if (overlay && !overlay.classList.contains('hidden')) {
+                playAlarmSound(settings.alarmSound, Math.max(settings.volume * 0.3, 0.1));
+            }
+        });
+    }, 1500); // Let alarm chime play for 1.5s, then speak
 
     // Browser notification
     if (settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
@@ -1310,7 +1295,7 @@ async function handleReminderSubmit(e) {
 
     if (!titleVal || !dateVal || !timeVal) return;
 
-    const message = messageVal || generateReminderMessage(titleVal);
+    let message = messageVal || generateReminderMessage(titleVal);
 
     const reminder = {
         id: id || `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1333,6 +1318,9 @@ async function handleReminderSubmit(e) {
         const old = existing.find(r => r.id === id);
         if (old) reminder.createdAt = old.createdAt;
     }
+
+    // Generate unified briefing before saving
+    reminder.message = await generateUnifiedBriefingAtCreation(reminder);
 
     await addItem('reminders', reminder);
     document.getElementById('reminder-modal').classList.add('hidden');
@@ -1428,6 +1416,10 @@ async function handleNoteSubmit(e) {
                 source: 'note',
                 linkedNoteId: note.id,
             };
+            
+            // Generate unified briefing before saving
+            reminder.message = await generateUnifiedBriefingAtCreation(reminder);
+            
             await addItem('reminders', reminder);
         }
     }
@@ -2201,6 +2193,25 @@ Constraints:
 - Speak directly to ${userName}.
 - OUTPUT ONLY the final spoken natural language notification, no explanations or formatting.
 Amma:`;
+}
+
+/**
+ * Call AI during reminder creation to synthesize the unified briefing immediately,
+ * saving it to the database so it doesn't need to be generated at alarm time.
+ */
+async function generateUnifiedBriefingAtCreation(reminder) {
+    if (window._aiEngine === 'aicore') {
+        try {
+            const contextPrompt = await buildAlarmContextPrompt(reminder);
+            const genRes = await LlmPlugin.generateWithAICore({ prompt: contextPrompt });
+            if (genRes.response) {
+                return genRes.response;
+            }
+        } catch (e) {
+            console.warn("AI generation at creation failed:", e);
+        }
+    }
+    return reminder.message || generateReminderMessage(reminder.title);
 }
 
 // ==========================================
